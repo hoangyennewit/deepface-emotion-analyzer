@@ -1,0 +1,21 @@
+# Bỏ qua toàn bộ thư mục môi trường ảo
+deepface-env/
+venv/
+env/
+.venv/
+
+# Bỏ qua bộ nhớ đệm Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Bỏ qua dữ liệu đầu vào và kết quả xuất ra
+data/*
+!data/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Bỏ qua cấu hình riêng của VS Code & hệ điều hành
+.vscode/
+.DS_Store
+Thumbs.db
