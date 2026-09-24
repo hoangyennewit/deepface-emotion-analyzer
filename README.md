@@ -8,3 +8,4 @@ Bước 3: Mở trình duyệt
 - Nếu sử dụng Swagger thì gõ: http://127.0.0.1:8000/docs
 2. Mô tả ý nghĩa, tác dụng của thư viện
 - python-multipart dùng để nhận ảnh, video upload
+- Cài thư viện ORM: pip install "sqlalchemy[asyncio]" asyncpg alembic pydantic-settings

@@ -19,3 +19,6 @@ outputs/*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Bỏ qua tệp môi trường
+.env 
