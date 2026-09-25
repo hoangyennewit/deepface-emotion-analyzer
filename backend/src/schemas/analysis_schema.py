@@ -1,6 +1,6 @@
 from pydantic import BaseModel
-from emotion_schema import FaceEmotionResponse
-from error_schema import ErrorResponse
+from backend.src.schemas.emotion_schema import FaceEmotionResponse
+from backend.src.schemas.error_schema import ErrorResponse
 
 class AnalysisResponse(BaseModel):
     success: bool  # Trạng thái thành công hay thất bại của phân tích

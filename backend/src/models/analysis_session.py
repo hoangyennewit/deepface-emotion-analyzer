@@ -2,8 +2,8 @@ import uuid
 from datetime import datetime
 from sqlalchemy import DateTime, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from src.db.base import Base
-from src.models.face_analysic import FaceAnalysis
+from backend.src.db.base import Base
+from backend.src.models.face_analysic import FaceAnalysis
 
 class AnalysisSession(Base):
     __tablename__ = "analysis_sessions"

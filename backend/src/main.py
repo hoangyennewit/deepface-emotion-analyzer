@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from src.api.router import api_router
+from backend.src.api.router import api_router
 
 app = FastAPI(
     title="Emotion Analysis API",
