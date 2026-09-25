@@ -1,5 +1,5 @@
 -- 1.2. Database Schema — DeepFace Emotion Analyzer
--- Database: PostgreSQL (có thể dùng SQLite/MySQL tương tự)
+-- Database: PostgreSQL 
 
 -- Bảng 1: Phiên phân tích (lưu metadata của ảnh/video/webcam)
 CREATE TABLE analysis_sessions (
