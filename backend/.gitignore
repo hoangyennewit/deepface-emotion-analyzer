@@ -1,0 +1,58 @@
+# =========================
+# Python virtual environment
+# =========================
+.venv/
+venv/
+env/
+
+# =========================
+# Python cache
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.local
+.env.development
+.env.production
+
+# Giữ file mẫu để cấu hình project
+!.env.example
+
+# =========================
+# Testing / coverage
+# =========================
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# =========================
+# Python tools cache
+# =========================
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# Build artifacts
+# =========================
+build/
+dist/
+*.egg-info/
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# IDE / OS
+# =========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,32 @@
+# Bỏ qua toàn bộ thư mục môi trường ảo
+deepface-env/
+venv/
+env/
+.venv/
+
+# Bỏ qua bộ nhớ đệm Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Bỏ qua dữ liệu đầu vào và kết quả xuất ra
+data/*
+!data/.gitkeep
+outputs/*
+!outputs/.gitkeep
+result.json
+
+# Model DeepFace tự tải về
+.deepface/
+
+# Video test (nặng, không nên push)
+*.mp4
+*.avi
+*.mov
+
+# Bỏ qua cấu hình riêng của IDE & hệ điều hành
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
