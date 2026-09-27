@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from backend.src.api.routes.emotion import router as emotion_router
 from backend.src.api.routes.health import router as health_router
+from backend.src.api.routes.upload import router as upload_router
 
 api_router = APIRouter()
 
@@ -13,4 +14,9 @@ api_router.include_router(
     health_router,
     prefix="/health",
     tags=["Health Check"]
+)
+api_router.include_router(
+    upload_router,
+    prefix="/upload",
+    tags=["File Upload"]
 )

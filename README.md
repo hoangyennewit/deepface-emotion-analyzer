@@ -18,3 +18,4 @@ Bước 4: Mở trình duyệt
 - python-multipart dùng để nhận ảnh, video upload
 - deepface dùng để nhận diện khuôn mặt và phân tích cảm xúc
 - Cài thư viện ORM: pip install "sqlalchemy[asyncio]" asyncpg alembic pydantic-settings
+- Thư viện upload file: aiofiles
