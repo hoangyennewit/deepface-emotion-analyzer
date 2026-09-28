@@ -1,4 +1,4 @@
-export type EmotionType  = 'happy' | 'sad' | 'angry' | 'surprised' | 'neutral';
+export type EmotionType  = 'happy' | 'sad' | 'angry' | 'surprised' | 'neutral' | 'fearful' | 'disgusted';
 
 export interface DetectedFace{
     id: number;
@@ -12,16 +12,16 @@ export interface DetectedFace{
 }
 
 export interface EmotionTimelineItem {
-    time: string;
+    time: number;
     emotions: Partial<Record<EmotionType, number>>;
 }
 
 export interface VideoAnalysisResult {
-    duration: string;
+    duration: number;
     totalFrames: number;
     processedFrames: number;
     totalFaces: number;
-    emotionSumary: Partial<Record<EmotionType, number>>;
+    emotionSummary: Partial<Record<EmotionType, number>>;
     faces: DetectedFace[];
     timeline: EmotionTimelineItem[];
 }

@@ -1,3 +1,7 @@
+I. FRONTEND
+1. Thư viện
+npm install react-router-dom
+II. BACKEND
 1. Hướng dẫn chạy server
 Bước 1: Kích hoạt virtual environment:
 .\deepface-env\Scripts\Activate.ps1
