@@ -1,0 +1,1 @@
+export const Settings = () => <div className="text-xl font-bold">Cài đặt hệ thống</div>;

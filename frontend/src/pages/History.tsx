@@ -1,0 +1,1 @@
+export const History = () => <div className="text-xl font-bold">Lịch sử phân tích</div>;

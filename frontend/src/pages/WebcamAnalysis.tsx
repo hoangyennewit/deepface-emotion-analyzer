@@ -1,0 +1,1 @@
+export const WebcamAnalysis = () => <div className="text-xl font-bold">Màn hình Phân tích Webcam trực tiếp</div>;

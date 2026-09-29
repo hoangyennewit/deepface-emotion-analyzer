@@ -1,0 +1,1 @@
+export const VideoAnalysis = () => <div className="text-xl font-bold">Màn hình Phân tích Video</div>;
