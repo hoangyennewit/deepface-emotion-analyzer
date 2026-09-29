@@ -27,6 +27,10 @@ ALLOWED_CONTENT_TYPES = {
 }
 MAX_IMAGE_BYTES = 10 * 1024 * 1024  # ~10MB theo khảo sát yêu cầu
 
+# Backend dùng để thử lại khi detector chính không tìm thấy mặt
+# (opencv nhanh nhưng dễ bỏ sót mặt nghiêng/ánh sáng yếu; retinaface chính xác hơn)
+FALLBACK_DETECTOR_BACKEND = "retinaface"
+
 
 def _decode_image(image_bytes: bytes) -> np.ndarray:
     """Giải mã bytes ảnh thành mảng BGR OpenCV."""
@@ -55,24 +59,19 @@ def _normalize_emotion_scores(emotion: dict[str, Any]) -> dict[str, float]:
     return {str(k): round(_to_python_float(v), 4) for k, v in emotion.items()}
 
 
-def analyze_static_image(
-    image_bytes: bytes,
-    *,
-    detector_backend: str = "opencv",
-) -> list[dict[str, Any]]:
+def _run_deepface_analyze(
+    image: np.ndarray, detector_backend: str
+) -> list[dict[str, Any]] | None:
     """
-    Phân tích cảm xúc tất cả khuôn mặt trong một ảnh tĩnh.
+    Chạy DeepFace.analyze với 1 detector_backend cụ thể.
 
     Returns:
-        list[dict]: mỗi phần tử gồm dominate_emotion, confidence, emotion, bbox.
+        list[dict] nếu tìm thấy ít nhất 1 mặt, None nếu không tìm thấy mặt
+        (để nơi gọi có thể thử fallback sang detector khác).
 
     Raises:
-        InvalidInputException: ảnh không hợp lệ / vượt dung lượng.
-        NoFaceDetectedException: không tìm thấy khuôn mặt.
-        ModelInferenceException: lỗi khi chạy DeepFace.
+        ModelInferenceException: lỗi thật sự khi chạy DeepFace (khác lỗi "không có mặt").
     """
-    image = _decode_image(image_bytes)
-
     try:
         results = DeepFace.analyze(
             img_path=image,
@@ -83,16 +82,52 @@ def analyze_static_image(
         )
     except ValueError as exc:
         # DeepFace thường ném ValueError khi không detect được mặt
-        logger.info("Không phát hiện khuôn mặt: %s", exc)
-        raise NoFaceDetectedException() from exc
+        logger.info(
+            "Không phát hiện khuôn mặt với detector '%s': %s", detector_backend, exc
+        )
+        return None
     except Exception as exc:
-        logger.exception("Lỗi suy luận DeepFace")
+        logger.exception("Lỗi suy luận DeepFace với detector '%s'", detector_backend)
         raise ModelInferenceException(str(exc)) from exc
 
     # DeepFace có thể trả về dict (1 mặt) hoặc list[dict] (nhiều mặt)
     if isinstance(results, dict):
         results = [results]
-    if not results:
+    return results if results else None
+
+
+def analyze_static_image(
+    image_bytes: bytes,
+    *,
+    detector_backend: str = "opencv",
+) -> list[dict[str, Any]]:
+    """
+    Phân tích cảm xúc tất cả khuôn mặt trong một ảnh tĩnh.
+
+    Thử detector_backend chính trước (mặc định "opencv", nhanh). Nếu không
+    tìm thấy mặt nào, tự động thử lại bằng FALLBACK_DETECTOR_BACKEND
+    ("retinaface", chậm hơn nhưng chính xác hơn) trước khi báo lỗi hẳn.
+
+    Returns:
+        list[dict]: mỗi phần tử gồm dominate_emotion, confidence, emotion, bbox.
+
+    Raises:
+        InvalidInputException: ảnh không hợp lệ / vượt dung lượng.
+        NoFaceDetectedException: không tìm thấy khuôn mặt (kể cả sau khi fallback).
+        ModelInferenceException: lỗi khi chạy DeepFace.
+    """
+    image = _decode_image(image_bytes)
+
+    results = _run_deepface_analyze(image, detector_backend)
+
+    if results is None and detector_backend != FALLBACK_DETECTOR_BACKEND:
+        logger.info(
+            "Thử lại phát hiện khuôn mặt bằng detector dự phòng '%s'",
+            FALLBACK_DETECTOR_BACKEND,
+        )
+        results = _run_deepface_analyze(image, FALLBACK_DETECTOR_BACKEND)
+
+    if results is None:
         raise NoFaceDetectedException()
 
     faces: list[dict[str, Any]] = []
