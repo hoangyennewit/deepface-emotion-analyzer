@@ -1,5 +1,5 @@
 from fastapi import HTTPException, Path, UploadFile, status
-from src.services.file_service import save_temporary_file, read_image_upload, save_upload_file,  IMAGE_DIR, VIDEO_DIR
+from backend.src.services.file_service import save_temporary_file, read_image_upload, save_upload_file, IMAGE_DIR, VIDEO_DIR
 
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff"]
 ALLOWED_VIDEO_TYPES = ["video/mp4", "video/avi", "video/mov", "video/mkv", "video/webm", "video/flv"]
@@ -13,7 +13,7 @@ async def upload_image_controller(file: UploadFile, save_file: bool):
 
     try:
         if save_file:
-            result = await save_upload_file(file = file, IMAGE_DIR = IMAGE_DIR)
+            result = await save_upload_file(file = file, destination = IMAGE_DIR)
 
             return {
                 "success": True,
@@ -57,7 +57,7 @@ async def upload_video_controller(file: UploadFile, save_file: bool):
 
     try:
         if save_file:
-            result = await save_upload_file(file = file, VIDEO_DIR = VIDEO_DIR)
+            result = await save_upload_file(file = file, destination = VIDEO_DIR)
 
             return {
                 "success": True,

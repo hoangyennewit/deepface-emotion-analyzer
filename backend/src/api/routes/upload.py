@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, Form
-from src.controller.upload_controller import upload_image_controller, upload_video_controller
+from backend.src.controller.upload_controller import upload_image_controller, upload_video_controller
 
 router = APIRouter()
 

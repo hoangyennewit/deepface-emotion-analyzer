@@ -5,6 +5,13 @@ import aiofiles
 from fastapi import UploadFile
 from uuid import uuid4
 
+UPLOAD_DIR = Path("outputs/uploads")
+IMAGE_DIR = UPLOAD_DIR / "images"
+VIDEO_DIR = UPLOAD_DIR / "videos"
+
+IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+
 async def save_upload_file(file: UploadFile, destination: Path) -> dict:
     if not file.filename:
         raise ValueError("Tên file upload không hợp lệ.")
@@ -38,7 +45,15 @@ async def read_image_upload(file: UploadFile) -> bytes:
     await file.close()
     return content
 
-async def save_temporary_file(file: UploadFile, destination: Path) -> dict:
+async def save_temporary_file(file: UploadFile, destination: Path | None = None) -> str:
     suffix = Path(file.filename or "").suffix.lower()
     temp_file = NamedTemporaryFile(delete=False, suffix=suffix)
-    temp_file = Path(temp_file.name)
+    temp_path = Path(temp_file.name)
+    temp_file.close()
+
+    async with aiofiles.open(temp_path, 'wb') as output_file:
+        while content := await file.read(1024 * 64):
+            await output_file.write(content)
+
+    await file.close()
+    return str(temp_path)
