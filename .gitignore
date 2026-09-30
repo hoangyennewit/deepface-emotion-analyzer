@@ -1,16 +1,82 @@
-# Python environment đang đặt ở root
+# ==========================================
+# Python Virtual Environments
+# ==========================================
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 deepface-env/
+*/.venv/
+*/venv/
+*/env/
 
-# Data
+# ==========================================
+# Python Cache & Bytecode
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# ==========================================
+# Frontend & Node Dependencies
+# ==========================================
+node_modules/
+*/node_modules/
+.vite/
+.eslintcache
+*.tsbuildinfo
+frontend/dist/
+frontend/dist-ssr/
+
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# ==========================================
+# Logs & Temporary Files
+# ==========================================
+*.log
+logs/
+*.tmp
+*.temp
+
+# ==========================================
+# Project Data & Generated Outputs
+# ==========================================
 data/*
 !data/.gitkeep
-
-# Generated outputs
 outputs/*
 !outputs/.gitkeep
 
-# IDE / OS
+# ==========================================
+# IDE & Operating System Files
+# ==========================================
 .vscode/
 .idea/
 .DS_Store
-Thumbs.db
+*.swp
+*.swo
+Thumbs.db
