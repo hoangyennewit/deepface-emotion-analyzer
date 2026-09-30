@@ -13,19 +13,27 @@ Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **Hình ản
 
 ## 🪟 I. HƯỚNG DẪN CHẠY THỦ CÔNG TRÊN WINDOWS
 
-Cần mở **2 cửa sổ Command Prompt (CMD)** hoặc **PowerShell** riêng biệt tại thư mục gốc `Project`:
+Cần mở **2 cửa sổ Terminal** (PowerShell hoặc CMD) riêng biệt tại thư mục gốc `Project`:
 
 ### 🔹 Cửa sổ 1: Chạy Backend (FastAPI)
-1. Mở CMD / PowerShell tại thư mục `Project`.
-2. Kích hoạt môi trường ảo:
-   ```cmd
-   # Nếu dùng .venv:
-   .venv\Scripts\activate
+1. Mở Terminal tại thư mục `Project`.
+2. Kích hoạt môi trường ảo `deepface-env`:
 
-   # Hoặc nếu dùng deepface-env:
-   deepface-env\Scripts\activate
-   ```
-   *(Khi kích hoạt thành công, đầu dòng lệnh sẽ hiện tên môi trường ví dụ `(.venv)`)*
+   - **Nếu dùng PowerShell (Terminal mặc định trong VS Code):**
+     ```powershell
+     .\deepface-env\Scripts\Activate.ps1
+     ```
+     > 💡 **Lưu ý khi dùng PowerShell:** Không dùng `activate.bat` vì `.bat` chạy trong tiến trình CMD con và không cập nhật môi trường của PowerShell.  
+     > Nếu PowerShell báo lỗi script execution bị chặn (`running scripts is disabled`), mở quyền tạm thời trong phiên hiện tại bằng lệnh:  
+     > `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process`
+
+   - **Nếu dùng Command Prompt (CMD):**
+     ```cmd
+     deepface-env\Scripts\activate.bat
+     ```
+
+   *(Khi kích hoạt thành công, đầu dòng lệnh sẽ hiện tiền tố `(deepface-env)`)*
+
 3. Khởi chạy server:
    ```cmd
    uvicorn backend.src.main:app --reload --host 127.0.0.1 --port 8000
@@ -85,14 +93,17 @@ Cần mở **2 tab / cửa sổ Terminal** riêng biệt tại thư mục gốc 
 Nếu máy tính mới chưa cài đặt các gói thư viện phụ thuộc:
 
 ### Cài đặt Backend:
-```bash
-# Trên Windows:
-.venv\Scripts\activate
+```powershell
+# Trên Windows (PowerShell):
+.\deepface-env\Scripts\Activate.ps1
+# Hoặc trên Windows (CMD):
+deepface-env\Scripts\activate.bat
+
 pip install -r requirements.txt
 pip install opencv-python==4.10.0.84 deepface fastapi uvicorn[standard] python-multipart
 
 # Trên macOS/Linux:
-source .venv/bin/activate
+source deepface-env/bin/activate
 pip install -r requirements.txt
 pip install opencv-python==4.10.0.84 deepface fastapi uvicorn[standard] python-multipart
 ```
