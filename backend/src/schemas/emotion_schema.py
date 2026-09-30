@@ -8,3 +8,4 @@ class FaceEmotionResponse(BaseModel):
     dominate_emotion: str  # Cảm xúc chiếm ưu thế
     confidence: float  # Mức độ tự tin của dự đoán cảm xúc
     emotion: Dict[str, float]  # Cảm xúc và xác suất tương ứng
+    bbox: Optional[list[int]] = None  # Bounding box [x, y, w, h]
