@@ -1,21 +1,20 @@
-import os
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
-BACKEND_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+ENV_PATH = BACKEND_DIR / ".env"
+
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://DTY:24102026@localhost:5432/fastapi_db"
-
-    @property
-    def DATABASE_URL(self) -> str:
-        return self.database_url
+    database_url: str
 
     model_config = SettingsConfigDict(
-        env_file=(str(BACKEND_ENV_PATH), str(ENV_PATH), ".env"),
+        env_file=str(ENV_PATH),
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
     )
+
 
 settings = Settings()

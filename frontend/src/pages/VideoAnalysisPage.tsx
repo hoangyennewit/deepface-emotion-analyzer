@@ -500,9 +500,10 @@ function VideoAnalysisPage() {
                                     marginBottom: "32px",
                                 }}
                             >
-                                <StatisPlaceholder label="Phân tích" />
+                                <StatisPlaceholder label="Thời lượng" />
                                 <StatisPlaceholder label="Tổng số khuôn mặt" />
-                                <StatisPlaceholder label="Frames phân tích" />
+                                <StatisPlaceholder label="Tổng số khung hình" />
+                                <StatisPlaceholder label="Khung hình đã xử lý" />
                             </div>
                         )}
 

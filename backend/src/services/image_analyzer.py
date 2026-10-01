@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 from deepface import DeepFace
 
-from backend.src.exceptions.ai_exceptions import (
+from src.exceptions.ai_exceptions import (
     InvalidInputException,
     ModelInferenceException,
     NoFaceDetectedException,
