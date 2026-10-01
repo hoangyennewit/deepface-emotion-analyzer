@@ -1,4 +1,4 @@
-# 1.1. Khảo sát yêu cầu phần mềm — DeepFace Emotion Analyzer
+## 1.1. Khảo sát yêu cầu phần mềm — DeepFace Emotion Analyzer
 
 ## 1. Mục tiêu phần mềm
 Xây dựng hệ thống phân tích cảm xúc khuôn mặt từ ảnh tĩnh, video hoặc webcam (real-time) sử dụng thư viện DeepFace,
