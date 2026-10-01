@@ -1,32 +1,82 @@
-# Bỏ qua toàn bộ thư mục môi trường ảo
-deepface-env/
+# ==========================================
+# Python Virtual Environments
+# ==========================================
+.venv/
 venv/
 env/
-.venv/
+ENV/
+env.bak/
+venv.bak/
+deepface-env/
+*/.venv/
+*/venv/
+*/env/
 
-# Bỏ qua bộ nhớ đệm Python
+# ==========================================
+# Python Cache & Bytecode
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
 .pytest_cache/
+.coverage
+coverage/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
 
-# Bỏ qua dữ liệu đầu vào và kết quả xuất ra
+# ==========================================
+# Frontend & Node Dependencies
+# ==========================================
+node_modules/
+*/node_modules/
+.vite/
+.eslintcache
+*.tsbuildinfo
+frontend/dist/
+frontend/dist-ssr/
+
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# ==========================================
+# Logs & Temporary Files
+# ==========================================
+*.log
+logs/
+*.tmp
+*.temp
+
+# ==========================================
+# Project Data & Generated Outputs
+# ==========================================
 data/*
 !data/.gitkeep
 outputs/*
 !outputs/.gitkeep
-result.json
 
-# Model DeepFace tự tải về
-.deepface/
-
-# Video test (nặng, không nên push)
-*.mp4
-*.avi
-*.mov
-
-# Bỏ qua cấu hình riêng của IDE & hệ điều hành
+# ==========================================
+# IDE & Operating System Files
+# ==========================================
 .vscode/
 .idea/
 .DS_Store
+*.swp
+*.swo
 Thumbs.db

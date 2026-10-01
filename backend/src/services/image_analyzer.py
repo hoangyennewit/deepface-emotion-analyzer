@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 from deepface import DeepFace
 
-from backend.src.exceptions.ai_exceptions import (
+from src.exceptions.ai_exceptions import (
     InvalidInputException,
     ModelInferenceException,
     NoFaceDetectedException,
@@ -97,9 +97,10 @@ def _run_deepface_analyze(
 
 
 def analyze_static_image(
-    image_bytes: bytes,
+    image_input: bytes | np.ndarray,
     *,
     detector_backend: str = "opencv",
+    enforce_detection: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Phân tích cảm xúc tất cả khuôn mặt trong một ảnh tĩnh.
@@ -116,7 +117,10 @@ def analyze_static_image(
         NoFaceDetectedException: không tìm thấy khuôn mặt (kể cả sau khi fallback).
         ModelInferenceException: lỗi khi chạy DeepFace.
     """
-    image = _decode_image(image_bytes)
+    if isinstance(image_input, np.ndarray):
+        image = image_input
+    else:
+        image = _decode_image(image_input)
 
     results = _run_deepface_analyze(image, detector_backend)
 
@@ -133,6 +137,8 @@ def analyze_static_image(
     faces: list[dict[str, Any]] = []
     img_h, img_w = image.shape[:2]
 
+    img_h, img_w = image.shape[:2]
+
     for idx, item in enumerate(results):
         emotion_scores = _normalize_emotion_scores(item.get("emotion") or {})
         dominant = str(item.get("dominant_emotion") or "unknown")
@@ -141,7 +147,15 @@ def analyze_static_image(
         region = item.get("region") or {}
         bbox = None
         is_full_frame = False
+        is_full_frame = False
         if region:
+            rx = int(region.get("x", 0))
+            ry = int(region.get("y", 0))
+            rw = int(region.get("w", 0))
+            rh = int(region.get("h", 0))
+            bbox = [rx, ry, rw, rh]
+            if rw >= img_w * 0.9 and rh >= img_h * 0.9:
+                is_full_frame = True
             rx = int(region.get("x", 0))
             ry = int(region.get("y", 0))
             rw = int(region.get("w", 0))
@@ -158,6 +172,7 @@ def analyze_static_image(
                 "confidence": confidence,
                 "emotion": emotion_scores,
                 "bbox": bbox,
+                "is_full_frame": is_full_frame,
                 "is_full_frame": is_full_frame,
             }
         )

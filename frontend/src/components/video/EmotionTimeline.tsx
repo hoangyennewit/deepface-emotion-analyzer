@@ -17,23 +17,29 @@ interface ChartDataItem {
     disgusted?: number;
 }
 
-const emotionLabels: Record<EmotionType, string> = {
+const emotionLabels: Record<string, string> = {
     angry: "Giận dữ",
     happy: "Hạnh phúc",
     sad: "Buồn",
     surprised: "Ngạc nhiên",
+    surprise: "Ngạc nhiên",
     neutral: "Bình thường",
     fearful: "Sợ hãi",
+    fear: "Sợ hãi",
     disgusted: "Ghê tởm",
+    disgust: "Ghê tởm",
 }
 
-const emotionColors: Record<EmotionType, string> = {
+const emotionColors: Record<string, string> = {
     angry: "#ef4444",
     disgusted: "#84cc16",
+    disgust: "#84cc16",
     fearful: "#9333ea",
+    fear: "#9333ea",
     happy: "#22c55e",
     sad: "#6366f1",
     surprised: "#f59e0b",
+    surprise: "#f59e0b",
     neutral: "#3b82f6",
 }
 

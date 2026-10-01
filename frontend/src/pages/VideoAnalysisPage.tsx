@@ -5,6 +5,7 @@ import VideoStatistics from '../components/video/VideoStatistics';
 import EmotionTimeline from '../components/video/EmotionTimeline';
 import EmotionFilter from '../components/video/EmotionFilter';
 import type { EmotionType, VideoAnalysisResult } from '../types/video';
+import { analyzeVideo } from '../services/videoService';
 
 const emotionConfig: Record<
   string,
@@ -13,13 +14,16 @@ const emotionConfig: Record<
     color: string;
   }
 > = {
-  happy: { label: "Happy", color: "#16a34a"},
-  neutral: { label: "Neutral", color: "#3b82f6"},
-  sad: { label: "Sad", color: "#1e3a8a"},
-  angry: { label: "Angry", color: "#ef4444"},
-  fear: { label: "Fear", color: "#9333ea"},
-  surprise: { label: "Surprise", color: "#f97316"},
-  disgust: {label: "Disgust", color: "#84cc16"},
+  neutral: { label: "Bình thường", color: "#3b82f6"},
+  happy: { label: "Hạnh phúc", color: "#22c55e"},
+  sad: { label: "Buồn", color: "#6366f1"},
+  angry: { label: "Giận dữ", color: "#ef4444"},
+  fear: { label: "Sợ hãi", color: "#9333ea"},
+  fearful: { label: "Sợ hãi", color: "#9333ea"},
+  surprise: { label: "Ngạc nhiên", color: "#f59e0b"},
+  surprised: { label: "Ngạc nhiên", color: "#f59e0b"},
+  disgust: { label: "Ghê tởm", color: "#84cc16"},
+  disgusted: { label: "Ghê tởm", color: "#84cc16"},
 };
 
 function getFallbackEmotionColor(
@@ -88,9 +92,22 @@ function StatisPlaceholder({ label }: StatisticPlaceholderProps) {
 }
 
 function EmotionSummary({ result }: EmotionSummaryProps) {
-    const summaryEntries = Object.entries(
-        result.emotionSummary
-    ) as [EmotionType, number][];
+    const canonicalMap: Record<string, string> = {
+        surprise: "surprised",
+        fear: "fearful",
+        disgust: "disgusted",
+    };
+    const seen = new Set<string>();
+    const summaryEntries: [EmotionType, number][] = [];
+
+    for (const [rawKey, val] of Object.entries(result.emotionSummary)) {
+        const canonical = (canonicalMap[rawKey] || rawKey) as EmotionType;
+        if (!seen.has(canonical) && typeof val === "number" && val > 0) {
+            seen.add(canonical);
+            summaryEntries.push([canonical, val]);
+        }
+    }
+    summaryEntries.sort((a, b) => b[1] - a[1]);
 
     if (summaryEntries.length === 0) {
         return (
@@ -206,15 +223,35 @@ function VideoAnalysisPage() {
         setSelectedEmotions([]);
     };
 
-    const handleAnalysisResult = (
-        result: VideoAnalysisResult
-    ) => {
-        setAnalysisResult(result);
-        const emotions = Object.keys(
-            result.emotionSummary
-        ) as EmotionType[];
+    const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+    const [analysisError, setAnalysisError] = useState<string>("");
 
-        setSelectedEmotions(emotions);
+    const handleStartAnalysis = async () => {
+        if (!videoFile) return;
+        setIsAnalyzing(true);
+        setAnalysisError("");
+        try {
+            const result = await analyzeVideo(videoFile);
+            setAnalysisResult(result);
+            const canonicalMap: Record<string, string> = {
+                surprise: "surprised",
+                fear: "fearful",
+                disgust: "disgusted",
+            };
+            const sortedEmotions = Object.entries(result.emotionSummary)
+                .sort(([, a], [, b]) => (b ?? 0) - (a ?? 0))
+                .map(([k]) => (canonicalMap[k] || k) as EmotionType);
+            const uniqueSorted = Array.from(new Set(sortedEmotions));
+            if (uniqueSorted.length > 0) {
+                setSelectedEmotions(uniqueSorted.slice(0, 3));
+            } else {
+                setSelectedEmotions(["neutral", "happy", "sad"]);
+            }
+        } catch (err: any) {
+            setAnalysisError(err.message || "Lỗi khi phân tích video.");
+        } finally {
+            setIsAnalyzing(false);
+        }
     };
 
     const handleToggleEmotion = (emotion: EmotionType) => {
@@ -272,9 +309,34 @@ function VideoAnalysisPage() {
                             style={{
                                 display: "flex",
                                 justifyContent: "flex-end",
+                                alignItems: "center",
+                                gap: "10px",
                                 marginBottom: "12px",
                             }}
-                        >        
+                        >
+                            {videoFile && !analysisResult && (
+                                <button
+                                    onClick={handleStartAnalysis}
+                                    disabled={isAnalyzing}
+                                    style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "7px",
+                                        padding: "8px 16px",
+                                        backgroundColor: isAnalyzing ? "#93C5FD" : "#2563EB",
+                                        color: "#FFFFFF",
+                                        border: "none",
+                                        borderRadius: "5px",
+                                        fontSize: "13px",
+                                        fontWeight: 600,
+                                        cursor: isAnalyzing ? "not-allowed" : "pointer",
+                                        boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)",
+                                    }}
+                                >
+                                    <span>{isAnalyzing ? "⏳ Đang phân tích video..." : "▶ Bắt đầu phân tích"}</span>
+                                </button>
+                            )}
+
                             <label
                                 style={{
                                     display: "inline-flex",
@@ -308,28 +370,77 @@ function VideoAnalysisPage() {
                             </label>
                         </div>
 
+                        {analysisError && (
+                            <div style={{ padding: "8px 12px", marginBottom: "10px", backgroundColor: "#FEE2E2", color: "#DC2626", borderRadius: "6px", fontSize: "13px" }}>
+                                ⚠️ {analysisError}
+                            </div>
+                        )}
+
                         {/* Video */}
-                        {videoUrl ?(
+                        {videoUrl ? (
                             <VideoPlayer
                                 videoUrl={videoUrl}
                                 faces={analysisResult?.faces ?? []}
                             />
-                        ):(
+                        ) : (
                             <div
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    const file = e.dataTransfer.files?.[0];
+                                    if (file) {
+                                        setVideoFile(file);
+                                        setAnalysisResult(null);
+                                        setSelectedEmotions([]);
+                                    }
+                                }}
                                 style={{
-                                    width: "100%",
-                                    height: "360px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    backgroundColor: "#f8fafc",
-                                    border: "1px dashed #cbd5e1",
-                                    borderRadius: "14px",
-                                    color: "#64748b",
-                                    fontSize: "14px"
+                                    backgroundColor: '#FFFFFF',
+                                    borderRadius: '16px',
+                                    border: '2px dashed #93C5FD',
+                                    padding: '48px 32px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '16px',
+                                    textAlign: 'center',
+                                    minHeight: '340px',
+                                    boxSizing: 'border-box',
                                 }}
                             >
-                                Chọn video để phân tích
+                                <div style={{ width: '72px', height: '72px', borderRadius: '16px', backgroundColor: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px' }}>
+                                    🎥
+                                </div>
+                                <div style={{ fontSize: '16px', fontWeight: 600, color: '#1E293B' }}>
+                                    Kéo thả video vào đây
+                                    <div style={{ fontSize: '13px', color: '#64748B', fontWeight: 400, marginTop: '4px' }}>hoặc</div>
+                                </div>
+
+                                <label
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '10px 20px',
+                                        backgroundColor: '#2563EB',
+                                        color: '#FFFFFF',
+                                        borderRadius: '8px',
+                                        fontSize: '14px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    <span>📁</span> Chọn video
+                                    <input
+                                        type="file"
+                                        accept="video/*"
+                                        onChange={handleVideoChange}
+                                        style={{ display: 'none' }}
+                                    />
+                                </label>
+
+                                <span style={{ fontSize: '12px', color: '#94A3B8' }}>Hỗ trợ định dạng: MP4, WebM...</span>
                             </div>
                         )}
 
@@ -389,9 +500,10 @@ function VideoAnalysisPage() {
                                     marginBottom: "32px",
                                 }}
                             >
-                                <StatisPlaceholder label="Phân tích" />
+                                <StatisPlaceholder label="Thời lượng" />
                                 <StatisPlaceholder label="Tổng số khuôn mặt" />
-                                <StatisPlaceholder label="Frames phân tích" />
+                                <StatisPlaceholder label="Tổng số khung hình" />
+                                <StatisPlaceholder label="Khung hình đã xử lý" />
                             </div>
                         )}
 

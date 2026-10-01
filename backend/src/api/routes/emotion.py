@@ -1,27 +1,13 @@
-# Kiểm tra cảm xúc của hình ảnh / video / webcam
-import asyncio
-import datetime
-import logging
-import os
-import tempfile
-import time
-import uuid
-from typing import Any, Dict, List, Optional, Tuple
-
-import cv2
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
-
-from backend.src.exceptions.ai_exceptions import AIException
-from backend.src.schemas.analysis_schema import AnalysisResponse
-from backend.src.schemas.emotion_schema import FaceEmotionResponse
-from backend.src.schemas.error_schema import ErrorResponse
-from backend.src.services.image_analyzer import (
-    analyze_static_image,
-    validate_image_upload,
+from fastapi import APIRouter, File, UploadFile, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from src.controller.emotion_controller import (
+    analyze_image_controller,
+    analyze_video_controller,
+    analyze_webcam_controller,
 )
-from backend.src.video_processor import VideoProcessor
+from src.schemas.analysis_schema import AnalysisResponse
+from src.db.session import get_session
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Bộ nhớ lưu trữ lịch sử phân tích (In-memory history store)
@@ -297,228 +283,30 @@ def _process_video_job(job_id: str, tmp_path: str, filename: str) -> None:
             pass
 
 
-@router.post("/image", response_model=AnalysisResponse)
-async def analyze_image(file: UploadFile = File(..., description="Ảnh tĩnh JPG/PNG/WEBP")):
-    """
-    Task 2 — Phân tích cảm xúc khuôn mặt từ ảnh tĩnh.
-    Upload 1 ảnh, DeepFace nhận diện khuôn mặt và trả về điểm 7 cảm xúc + bbox.
-    """
-    try:
-        validate_image_upload(file.content_type, file.filename)
-        image_bytes = await file.read()
-        faces = await asyncio.to_thread(analyze_static_image, image_bytes)
-
-        face_emotions = [
-            FaceEmotionResponse(
-                track_id=face.get("track_id"),
-                dominate_emotion=face["dominate_emotion"],
-                confidence=face["confidence"],
-                emotion=face["emotion"],
-                bbox=face.get("bbox"),
-            )
-            for face in faces
-        ]
-
-        # Tính tổng hợp cảm xúc cho giao diện
-        dominant_counts: Dict[str, int] = {}
-        for face in face_emotions:
-            dom = face.dominate_emotion
-            dominant_counts[dom] = dominant_counts.get(dom, 0) + 1
-
-        total = len(face_emotions)
-        quick = "Chưa phát hiện mặt"
-        if face_emotions:
-            primary = face_emotions[0]
-            quick = f"{primary.dominate_emotion.capitalize()} {int(primary.confidence * 100)}%"
-
-        # Lưu lại vào lịch sử
-        now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-        HISTORY_RECORDS.insert(
-            0,
-            {
-                "id": str(uuid.uuid4())[:8],
-                "created_at": now_str,
-                "type": "image",
-                "type_label": "Ảnh",
-                "filename": file.filename or "uploaded_image.jpg",
-                "quick_result": quick,
-                "dominant_emotion": face_emotions[0].dominate_emotion if face_emotions else "neutral",
-                "duration": "00:00",
-                "total_faces": total,
-                "positive_rate": int(face_emotions[0].confidence * 100) if face_emotions and face_emotions[0].dominate_emotion in ("happy", "surprise") else 30,
-                "emotion_summary": {
-                    k: round((v / max(1, total)) * 100, 1) for k, v in dominant_counts.items()
-                },
-                "timeline": [{"time": 0, "emotions": face_emotions[0].emotion}] if face_emotions else [],
-                "faces": [
-                    {
-                        "id": f.track_id or idx + 1,
-                        "dominantEmotion": f.dominate_emotion,
-                        "confidence": round(f.confidence * 100, 1),
-                        "x": f.bbox[0] if f.bbox else 0,
-                        "y": f.bbox[1] if f.bbox else 0,
-                        "width": f.bbox[2] if f.bbox else 0,
-                        "height": f.bbox[3] if f.bbox else 0,
-                    }
-                    for idx, f in enumerate(face_emotions)
-                ],
-            }
-        )
-
-        return AnalysisResponse(
-            success=True,
-            total_faces=len(face_emotions),
-            face_emotions=face_emotions,
-            error=None,
-        )
-    except AIException as exc:
-        logger.warning("Phân tích ảnh thất bại: %s (%s)", exc.message, exc.error_code)
-        return AnalysisResponse(
-            success=False,
-            total_faces=0,
-            face_emotions=[],
-            error=ErrorResponse(error_code=exc.error_code, message=exc.message),
-        )
-    except Exception as exc:
-        logger.exception("Lỗi không xác định khi phân tích ảnh")
-        return AnalysisResponse(
-            success=False,
-            total_faces=0,
-            face_emotions=[],
-            error=ErrorResponse(
-                error_code="INTERNAL_ERROR",
-                message=f"Lỗi hệ thống: {exc}",
-            ),
-        )
+@router.post(
+    "/image",
+    response_model=AnalysisResponse,
+)
+async def analyze_image(
+    file: UploadFile = File(
+        ...,
+        description="Ảnh tĩnh JPG/PNG/WEBP",
+    ),
+    db: AsyncSession = Depends(get_session),
+):
+    return await analyze_image_controller(file = file, db = db)
 
 
 @router.post("/video")
-async def analyze_video(file: UploadFile = File(...)):
-    """
-    Phân tích cảm xúc khuôn mặt từ Video (đồng bộ — chờ đến khi xử lý xong).
-    Lấy mẫu frame, phân tích cảm xúc từng frame và tạo timeline Recharts.
-    """
-    tmp_path, filename = await _save_upload_to_temp(file)
-    try:
-        result = _analyze_video_core(tmp_path)
-        _save_video_to_history(filename, result["duration"], result["faces"], result["emotionSummary"], result["timeline"])
-        result["filename"] = filename
-        return result
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-
-@router.post("/video/background")
-async def analyze_video_background(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    """
-    Task 2 — Xử lý ngầm video bằng FastAPI BackgroundTasks.
-
-    Client upload video, nhận ngay job_id + trạng thái "processing" mà không phải
-    chờ; server phân tích trong nền (thread pool), client sau đó poll
-    GET /emotion/video/status/{job_id} để lấy kết quả.
-    """
-    tmp_path, filename = await _save_upload_to_temp(file)
-    job_id = uuid.uuid4().hex[:8]
-
-    VIDEO_JOBS[job_id] = {
-        "job_id": job_id,
-        "status": "processing",
-        "progress": 0,
-        "filename": filename,
-        "created_at": datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-        "result": None,
-        "error": None,
-        "processing_time": None,
-    }
-
-    # add_task với hàm sync → starlette tự chạy trên thread pool SAU KHI trả response
-    background_tasks.add_task(_process_video_job, job_id, tmp_path, filename)
-
-    return {
-        "job_id": job_id,
-        "status": "processing",
-        "filename": filename,
-        "message": "Đã nhận video, hệ thống đang phân tích ngầm. Poll /emotion/video/status/{job_id} để lấy kết quả.",
-    }
-
-
-@router.get("/video/status/{job_id}")
-async def get_video_job_status(job_id: str):
-    """Tra cứu trạng thái job phân tích video ngầm (cho FE poll định kỳ)."""
-    job = VIDEO_JOBS.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy job {job_id}.")
-    return job
+async def analyze_video(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_session),
+):
+    return await analyze_video_controller(file = file, db = db)
 
 
 @router.post("/webcam")
-async def analyze_webcam(file: UploadFile = File(...)):
-    """
-    Phân tích frame từ Webcam trực tiếp.
-    Nhận 1 JPEG frame từ canvas, trả về kết quả nhận diện khuôn mặt và cảm xúc ngay lập tức.
-    """
-    try:
-        image_bytes = await file.read()
-        faces = await asyncio.to_thread(analyze_static_image, image_bytes)
-        
-        face_list = []
-        for face in faces:
-            dom = face.get("dominate_emotion", "neutral")
-            conf = face.get("confidence", 0.0)
-            bbox = face.get("bbox") or [0, 0, 100, 100]
-            scores = face.get("emotion") or {}
-            face_list.append({
-                "dominant_emotion": dom,
-                "confidence": conf,
-                "bbox": bbox,
-                "emotion_scores": scores
-            })
-
-        return {
-            "success": True,
-            "total_faces": len(face_list),
-            "faces": face_list
-        }
-    except Exception as e:
-        logger.warning("Webcam analyze frame warning: %s", e)
-        return {
-            "success": False,
-            "total_faces": 0,
-            "faces": [],
-            "message": str(e)
-        }
-
-
-@router.get("/history")
-async def get_history(type: Optional[str] = None):
-    """
-    Lấy danh sách lịch sử phân tích (cho màn hình Lịch sử Desktop - 12).
-    """
-    if type and type != "all":
-        return [r for r in HISTORY_RECORDS if r.get("type") == type]
-    return HISTORY_RECORDS
-
-
-@router.get("/history/{history_id}")
-async def get_history_detail(history_id: str):
-    """
-    Lấy chi tiết 1 phiên phân tích (cho màn hình Desktop - 13).
-    """
-    for r in HISTORY_RECORDS:
-        if r["id"] == history_id:
-            return r
-    raise HTTPException(status_code=404, detail="Không tìm thấy bản ghi lịch sử.")
-
-
-@router.delete("/history/{history_id}")
-async def delete_history_item(history_id: str):
-    """
-    Xóa 1 bản ghi lịch sử (cho thao tác Xóa trong Desktop - 12).
-    """
-    global HISTORY_RECORDS
-    original_len = len(HISTORY_RECORDS)
-    HISTORY_RECORDS = [r for r in HISTORY_RECORDS if r["id"] != history_id]
-    if len(HISTORY_RECORDS) == original_len:
-        raise HTTPException(status_code=404, detail="Không tìm thấy bản ghi lịch sử để xóa.")
-    return {"success": True, "message": "Đã xóa bản ghi thành công", "deleted_id": history_id}
+async def analyze_webcam(
+    file: UploadFile = File(...),
+):
+    return await analyze_webcam_controller(file = file)
