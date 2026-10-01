@@ -1,0 +1,1 @@
+export const ImageAnalysis = () => <div className="text-xl font-bold">Màn hình Phân tích ảnh</div>;
