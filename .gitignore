@@ -79,4 +79,6 @@ outputs/*
 .DS_Store
 *.swp
 *.swo
-Thumbs.db
+Thumbs.db
+# Bao cao duoc tao khi chay
+outputs/reports/
