@@ -1,1 +1,0 @@
-export const Home = () => <div className="text-xl font-bold">Trang chủ: Giới thiệu ứng dụng</div>;
