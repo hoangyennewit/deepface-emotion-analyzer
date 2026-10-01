@@ -1,6 +1,6 @@
 import type { AnalysisSession } from "../types/api";
 
-const API_BASE_URL = "http://localhost:5000"; // sửa lại khi backend có endpoint thật
+const API_BASE_URL = "http://localhost:8000"; // sửa lại khi backend có endpoint thật
 
 export async function createSession(
   file: File,

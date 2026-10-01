@@ -1,6 +1,6 @@
 import type { RealtimeAnalysisResponse } from "../types/api";
 
-const API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL = "http://localhost:8000";
 
 export async function analyzeFrame(blob: Blob): Promise<RealtimeAnalysisResponse> {
   const formData = new FormData();

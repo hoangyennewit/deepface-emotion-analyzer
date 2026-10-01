@@ -1,9 +1,9 @@
 from fastapi import APIRouter
-from backend.src.api.routes.emotion import router as emotion_router
-from backend.src.api.routes.health import router as health_router
-from backend.src.api.routes.upload import router as upload_router
-from backend.src.api.routes.user import router as user_router
-from backend.src.api.routes.settings_route import router as settings_router
+from src.api.routes.emotion import router as emotion_router
+from src.api.routes.health import router as health_router
+from src.api.routes.upload import router as upload_router
+from src.api.routes.user import router as user_router
+from src.api.routes.settings_route import router as settings_router
 
 api_router = APIRouter()
 

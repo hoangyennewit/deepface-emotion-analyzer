@@ -5,7 +5,7 @@ import VideoStatistics from '../components/video/VideoStatistics';
 import EmotionTimeline from '../components/video/EmotionTimeline';
 import EmotionFilter from '../components/video/EmotionFilter';
 import type { EmotionType, VideoAnalysisResult } from '../types/video';
-import { analyzeVideo } from '../services/videoService';
+import { analyzeVideo } from '../services/api';
 
 const emotionConfig: Record<
   string,

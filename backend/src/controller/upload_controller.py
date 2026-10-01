@@ -1,5 +1,5 @@
 from fastapi import HTTPException, Path, UploadFile, status
-from backend.src.services.file_service import save_temporary_file, read_image_upload, save_upload_file, IMAGE_DIR, VIDEO_DIR
+from src.services.file_service import save_temporary_file, read_image_upload, save_upload_file, IMAGE_DIR, VIDEO_DIR
 
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff"]
 ALLOWED_VIDEO_TYPES = ["video/mp4", "video/avi", "video/mov", "video/mkv", "video/webm", "video/flv"]

@@ -1,10 +1,11 @@
 """
-Task 2: Phân tích cảm xúc khuôn mặt từ ảnh tĩnh bằng DeepFace.
+Phân tích nhãn biểu cảm khuôn mặt từ ảnh tĩnh bằng DeepFace.
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -25,52 +26,76 @@ ALLOWED_CONTENT_TYPES = {
     "image/png",
     "image/webp",
 }
-MAX_IMAGE_BYTES = 10 * 1024 * 1024  # ~10MB theo khảo sát yêu cầu
 
-# Backend dùng để thử lại khi detector chính không tìm thấy mặt
-# (opencv nhanh nhưng dễ bỏ sót mặt nghiêng/ánh sáng yếu; retinaface chính xác hơn)
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+# OpenCV nhanh; RetinaFace dùng làm detector dự phòng khi cần.
 FALLBACK_DETECTOR_BACKEND = "retinaface"
 
 
-def _decode_image(image_bytes: bytes) -> np.ndarray:
-    """Giải mã bytes ảnh thành mảng BGR OpenCV."""
+def _decode_image(
+    image_bytes: bytes,
+) -> np.ndarray:
+    """Giải mã bytes ảnh thành BGR ndarray của OpenCV."""
     if not image_bytes:
         raise InvalidInputException("File ảnh rỗng.")
+
     if len(image_bytes) > MAX_IMAGE_BYTES:
         raise InvalidInputException(
-            f"Dung lượng ảnh vượt quá giới hạn {MAX_IMAGE_BYTES // (1024 * 1024)}MB."
+            "Dung lượng ảnh vượt quá giới hạn "
+            f"{MAX_IMAGE_BYTES // (1024 * 1024)}MB."
         )
 
-    arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    array = np.frombuffer(
+        image_bytes,
+        dtype=np.uint8,
+    )
+
+    image = cv2.imdecode(
+        array,
+        cv2.IMREAD_COLOR,
+    )
+
     if image is None:
-        raise InvalidInputException("Không đọc được ảnh. Hãy dùng JPG, PNG hoặc WEBP.")
+        raise InvalidInputException(
+            "Không đọc được ảnh. Hãy dùng JPG, PNG hoặc WEBP."
+        )
+
     return image
 
 
-def _to_python_float(value: Any) -> float:
+def _to_python_float(
+    value: Any,
+) -> float:
     """Chuyển numpy scalar sang float Python để JSON serialize được."""
     if hasattr(value, "item"):
         return float(value.item())
+
     return float(value)
 
 
-def _normalize_emotion_scores(emotion: dict[str, Any]) -> dict[str, float]:
-    return {str(k): round(_to_python_float(v), 4) for k, v in emotion.items()}
+def _normalize_emotion_scores(
+    emotion: dict[str, Any],
+) -> dict[str, float]:
+    return {
+        str(name): round(
+            _to_python_float(value),
+            4,
+        )
+        for name, value in emotion.items()
+    }
 
 
 def _run_deepface_analyze(
-    image: np.ndarray, detector_backend: str
+    image: np.ndarray,
+    detector_backend: str,
+    enforce_detection: bool,
 ) -> list[dict[str, Any]] | None:
     """
-    Chạy DeepFace.analyze với 1 detector_backend cụ thể.
+    Chạy DeepFace với một detector cụ thể.
 
-    Returns:
-        list[dict] nếu tìm thấy ít nhất 1 mặt, None nếu không tìm thấy mặt
-        (để nơi gọi có thể thử fallback sang detector khác).
-
-    Raises:
-        ModelInferenceException: lỗi thật sự khi chạy DeepFace (khác lỗi "không có mặt").
+    [CHỈNH] enforce_detection được truyền vào rõ ràng.
+    Bản cũ dùng biến này nhưng không khai báo trong hàm.
     """
     try:
         results = DeepFace.analyze(
@@ -80,19 +105,25 @@ def _run_deepface_analyze(
             enforce_detection=enforce_detection,
             silent=True,
         )
+
     except ValueError as exc:
-        # DeepFace thường ném ValueError khi không detect được mặt
         logger.info(
-            "Không phát hiện khuôn mặt với detector '%s': %s", detector_backend, exc
+            "Không phát hiện khuôn mặt với detector '%s': %s",
+            detector_backend,
+            exc,
         )
         return None
+
     except Exception as exc:
-        logger.exception("Lỗi suy luận DeepFace với detector '%s'", detector_backend)
+        logger.exception(
+            "Lỗi suy luận DeepFace với detector '%s'",
+            detector_backend,
+        )
         raise ModelInferenceException(str(exc)) from exc
 
-    # DeepFace có thể trả về dict (1 mặt) hoặc list[dict] (nhiều mặt)
     if isinstance(results, dict):
         results = [results]
+
     return results if results else None
 
 
@@ -101,78 +132,102 @@ def analyze_static_image(
     *,
     detector_backend: str = "opencv",
     enforce_detection: bool = True,
+    use_fallback: bool = True,
 ) -> list[dict[str, Any]]:
     """
-    Phân tích cảm xúc tất cả khuôn mặt trong một ảnh tĩnh.
+    Phân loại nhãn biểu cảm của tất cả khuôn mặt trong ảnh.
 
-    Thử detector_backend chính trước (mặc định "opencv", nhanh). Nếu không
-    tìm thấy mặt nào, tự động thử lại bằng FALLBACK_DETECTOR_BACKEND
-    ("retinaface", chậm hơn nhưng chính xác hơn) trước khi báo lỗi hẳn.
-
-    Returns:
-        list[dict]: mỗi phần tử gồm dominate_emotion, confidence, emotion, bbox.
-
-    Raises:
-        InvalidInputException: ảnh không hợp lệ / vượt dung lượng.
-        NoFaceDetectedException: không tìm thấy khuôn mặt (kể cả sau khi fallback).
-        ModelInferenceException: lỗi khi chạy DeepFace.
+    Nếu detector chính không trả về kết quả, thử RetinaFace trước khi
+    báo NoFaceDetectedException.
     """
     if isinstance(image_input, np.ndarray):
         image = image_input
     else:
         image = _decode_image(image_input)
 
-    results = _run_deepface_analyze(image, detector_backend)
+    results = _run_deepface_analyze(
+        image,
+        detector_backend,
+        enforce_detection,
+    )
 
-    if results is None and detector_backend != FALLBACK_DETECTOR_BACKEND:
+    if (
+        results is None
+        and use_fallback
+        and detector_backend != FALLBACK_DETECTOR_BACKEND
+    ):
         logger.info(
-            "Thử lại phát hiện khuôn mặt bằng detector dự phòng '%s'",
+            "Thử lại bằng detector dự phòng '%s'",
             FALLBACK_DETECTOR_BACKEND,
         )
-        results = _run_deepface_analyze(image, FALLBACK_DETECTOR_BACKEND)
+
+        results = _run_deepface_analyze(
+            image,
+            FALLBACK_DETECTOR_BACKEND,
+            enforce_detection,
+        )
 
     if results is None:
         raise NoFaceDetectedException()
 
     faces: list[dict[str, Any]] = []
-    img_h, img_w = image.shape[:2]
+    image_height, image_width = image.shape[:2]
 
-    img_h, img_w = image.shape[:2]
+    for index, item in enumerate(results):
+        emotion_scores = _normalize_emotion_scores(
+            item.get("emotion") or {}
+        )
 
-    for idx, item in enumerate(results):
-        emotion_scores = _normalize_emotion_scores(item.get("emotion") or {})
-        dominant = str(item.get("dominant_emotion") or "unknown")
-        confidence = round(emotion_scores.get(dominant, 0.0), 4)
+        dominant_emotion = str(
+            item.get("dominant_emotion")
+            or "unknown"
+        )
+
+        confidence = round(
+            emotion_scores.get(
+                dominant_emotion,
+                0.0,
+            ),
+            4,
+        )
 
         region = item.get("region") or {}
+
         bbox = None
         is_full_frame = False
-        is_full_frame = False
+
         if region:
-            rx = int(region.get("x", 0))
-            ry = int(region.get("y", 0))
-            rw = int(region.get("w", 0))
-            rh = int(region.get("h", 0))
-            bbox = [rx, ry, rw, rh]
-            if rw >= img_w * 0.9 and rh >= img_h * 0.9:
-                is_full_frame = True
-            rx = int(region.get("x", 0))
-            ry = int(region.get("y", 0))
-            rw = int(region.get("w", 0))
-            rh = int(region.get("h", 0))
-            bbox = [rx, ry, rw, rh]
-            if rw >= img_w * 0.9 and rh >= img_h * 0.9:
+            x = int(region.get("x", 0))
+            y = int(region.get("y", 0))
+            width = int(region.get("w", 0))
+            height = int(region.get("h", 0))
+
+            bbox = [
+                x,
+                y,
+                width,
+                height,
+            ]
+
+            if (
+                width >= image_width * 0.9
+                and height >= image_height * 0.9
+            ):
                 is_full_frame = True
 
         faces.append(
             {
-                "track_id": idx,
-                "dominate_emotion": dominant,
-                "dominant_emotion": dominant,  # tương thích create_ai_respose
+                "track_id": index,
+
+                # Giữ key cũ để tương thích schema hiện tại.
+                "dominate_emotion": dominant_emotion,
+
+                # Giữ key đúng chính tả để các layer khác có thể dùng.
+                "dominant_emotion": dominant_emotion,
+
                 "confidence": confidence,
                 "emotion": emotion_scores,
                 "bbox": bbox,
-                "is_full_frame": is_full_frame,
                 "is_full_frame": is_full_frame,
             }
         )
@@ -180,16 +235,33 @@ def analyze_static_image(
     return faces
 
 
-def validate_image_upload(content_type: str | None, filename: str | None) -> None:
-    """Kiểm tra content-type / phần mở rộng file upload."""
-    if content_type and content_type.lower() in ALLOWED_CONTENT_TYPES:
+def validate_image_upload(
+    content_type: str | None,
+    filename: str | None,
+) -> None:
+    """Kiểm tra content-type hoặc extension của ảnh upload."""
+    if (
+        content_type
+        and content_type.lower() in ALLOWED_CONTENT_TYPES
+    ):
         return
 
     if filename:
-        ext = filename.rsplit(".", 1)[-1].lower()
-        if ext in {"jpg", "jpeg", "png", "webp"}:
+        extension = (
+            Path(filename).suffix.lower()
+            if "." in filename
+            else ""
+        )
+
+        if extension in {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+        }:
             return
 
     raise InvalidInputException(
-        "Định dạng ảnh không hỗ trợ. Chỉ chấp nhận JPG, PNG, WEBP."
+        "Định dạng ảnh không hỗ trợ. "
+        "Chỉ chấp nhận JPG, PNG, WEBP."
     )

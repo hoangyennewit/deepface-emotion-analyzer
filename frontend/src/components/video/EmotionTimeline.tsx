@@ -44,10 +44,25 @@ const emotionColors: Record<string, string> = {
 }
 
 function EmotionTimeline({ timeline, selectedEmotions }: EmotionTimelineProps) {
-    const chartData: ChartDataItem[] = timeline.map((item) => ({
-        time: item.time,
-        ...item.emotions,
-    }));
+    // [CHỈNH] Backend trả key DeepFace gốc (surprise, fear, disgust)
+    // nhưng EmotionFilter dùng key canonical (surprised, fearful, disgusted).
+    // Chuẩn hóa để dataKey khớp với selectedEmotions.
+    const canonicalMap: Record<string, string> = {
+        surprise: "surprised",
+        fear: "fearful",
+        disgust: "disgusted",
+    };
+    const chartData: ChartDataItem[] = timeline.map((item) => {
+        const mapped: Record<string, number> = {};
+        for (const [key, value] of Object.entries(item.emotions)) {
+            const canonical = canonicalMap[key] || key;
+            mapped[canonical] = (mapped[canonical] ?? 0) + value;
+        }
+        return {
+            time: item.time,
+            ...mapped,
+        };
+    });
     const formatTime = (seconds: number): string => {
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = Math.floor(seconds % 60);

@@ -75,6 +75,12 @@ async def analyze_video_controller(
             status_code=400,
             detail=exc.message,
         )
+    except Exception as exc:
+        logger.exception("Phân tích video thất bại: %s", file.filename)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Không thể phân tích video: {exc}",
+        ) from exc
 
 
 async def analyze_webcam_controller(

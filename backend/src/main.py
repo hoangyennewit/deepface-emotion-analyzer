@@ -1,48 +1,40 @@
-import os
-import sys
-from pathlib import Path
-
-# Thiết lập đường dẫn model và sys.path trong thư mục dự án cho Windows & Mac
-workspace_dir = Path(__file__).resolve().parent.parent.parent
-backend_dir = workspace_dir / "backend"
-sys.path.insert(0, str(workspace_dir))
-sys.path.insert(0, str(backend_dir))
-
-venv_keras = workspace_dir / ".venv" / "keras"
-venv_deepface = workspace_dir / ".venv" / "deepface"
-if venv_keras.exists():
-    os.environ["KERAS_HOME"] = str(venv_keras)
-if venv_deepface.exists():
-    os.environ["DEEPFACE_HOME"] = str(venv_deepface)
+import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.src.api.router import api_router
+
+from src.api.router import api_router
+
+# Import model để Base.metadata biết có bảng nào (đường dẫn lấy từ repository của bạn)
+from src.models.analysis_session import AnalysisSession  # noqa: F401
+from src.models.face_analysic import FaceAnalysis  # noqa: F401
+from src.db.base import Base
+from src.db.session import engine
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+
 
 app = FastAPI(
     title="Emotion Analysis API",
     description="API for facial expression analysis using DeepFace",
-    version="1.0.0"
-)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # đúng port Vite dev server
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

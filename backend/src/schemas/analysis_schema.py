@@ -1,6 +1,8 @@
 from pydantic import BaseModel
-from backend.src.schemas.emotion_schema import FaceEmotionResponse
-from backend.src.schemas.error_schema import ErrorResponse
+# [CHỈNH] Sửa import path: dùng `from src...` thống nhất với toàn project.
+# Bản cũ dùng `from backend.src...` gây ImportError.
+from src.schemas.emotion_schema import FaceEmotionResponse
+from src.schemas.error_schema import ErrorResponse
 
 class AnalysisResponse(BaseModel):
     success: bool  # Trạng thái thành công hay thất bại của phân tích
