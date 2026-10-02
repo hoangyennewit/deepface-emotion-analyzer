@@ -2,6 +2,8 @@
 # src/api/routes/emotion.py
 # =========================================================
 
+from uuid import UUID
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -16,6 +18,11 @@ from src.controller.emotion_controller import (
     analyze_video_controller,
     analyze_webcam_controller,
 )
+from src.controller.history_controller import (
+    delete_history_controller,
+    get_history_controller,
+    get_history_detail_controller,
+)
 
 from src.db.session import get_session
 
@@ -25,6 +32,30 @@ from src.schemas.analysis_schema import (
 
 
 router = APIRouter()
+
+
+@router.get("/history")
+async def get_history(
+    type: str = "all",
+    db: AsyncSession = Depends(get_session),
+):
+    return await get_history_controller(db=db, source_type=type)
+
+
+@router.get("/history/{session_id}")
+async def get_history_detail(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_session),
+):
+    return await get_history_detail_controller(db=db, session_id=session_id)
+
+
+@router.delete("/history/{session_id}")
+async def delete_history(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_session),
+):
+    return await delete_history_controller(db=db, session_id=session_id)
 
 
 # =========================================================

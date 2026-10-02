@@ -64,7 +64,7 @@ export function useWebcamEmotion(enabled: boolean) {
         return {
           id: f.track_id ?? i,
           emotion: normalizeEmotionKey(f.dominate_emotion),
-          confidence: Math.round((f.confidence ?? 0) * 100),
+          confidence: Math.round(f.confidence ?? 0),
           xPct: (bbox[0] / Math.max(1, videoW)) * 100,
           yPct: (bbox[1] / Math.max(1, videoH)) * 100,
           wPct: (bbox[2] / Math.max(1, videoW)) * 100,

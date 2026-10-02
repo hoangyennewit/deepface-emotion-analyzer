@@ -3,6 +3,7 @@ from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.models.analysis_session import AnalysisSession
 from src.models.face_analysic import FaceAnalysis
@@ -50,9 +51,9 @@ async def get_analysis_session_by_id(
 ) -> Optional[AnalysisSession]:
 
     result = await db.execute(
-        select(AnalysisSession).where(
-            AnalysisSession.id == session_id
-        )
+        select(AnalysisSession)
+        .options(selectinload(AnalysisSession.face_analyses))
+        .where(AnalysisSession.id == session_id)
     )
 
     return result.scalar_one_or_none()
@@ -65,7 +66,9 @@ async def get_analysis_sessions(
     limit: int = 50,
 ) -> list[AnalysisSession]:
 
-    query = select(AnalysisSession)
+    query = select(AnalysisSession).options(
+        selectinload(AnalysisSession.face_analyses)
+    )
 
     if source_type and source_type != "all":
         query = query.where(

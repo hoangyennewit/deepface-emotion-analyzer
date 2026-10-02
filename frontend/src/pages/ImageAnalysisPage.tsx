@@ -31,6 +31,7 @@ const EMOTION_LABELS: Record<string, string> = {
 export const ImageAnalysisPage: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [result, setResult] = useState<ImageAnalysisResult | null>(null);
@@ -287,20 +288,27 @@ export const ImageAnalysisPage: React.FC = () => {
                 <img
                   src={previewUrl}
                   alt="Original with boxes"
-                  style={{ display: 'block', width: '100%', height: 'auto', maxHeight: '420px', objectFit: 'contain' }}
+                  onLoad={(event) => {
+                    setImageSize({
+                      width: event.currentTarget.naturalWidth,
+                      height: event.currentTarget.naturalHeight,
+                    });
+                  }}
+                  style={{ display: 'block', width: '100%', height: 'auto' }}
                 />
-                {result.face_emotions.map((face, idx) => {
+                {imageSize.width > 0 && imageSize.height > 0 && result.face_emotions.map((face, idx) => {
                   if (!face.bbox) return null;
+                  const [x, y, width, height] = face.bbox;
                   return (
                     <div
                       key={idx}
                       style={{
                         position: 'absolute',
                         border: '2px solid #22C55E',
-                        left: `${Math.max(10, (idx * 30 + 15))}%`,
-                        top: '20%',
-                        width: '28%',
-                        height: '45%',
+                        left: `${(x / imageSize.width) * 100}%`,
+                        top: `${(y / imageSize.height) * 100}%`,
+                        width: `${(width / imageSize.width) * 100}%`,
+                        height: `${(height / imageSize.height) * 100}%`,
                         boxSizing: 'border-box',
                       }}
                     >
@@ -318,7 +326,7 @@ export const ImageAnalysisPage: React.FC = () => {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {face.dominate_emotion} {Math.round(face.confidence * 100)}%
+                        {face.dominate_emotion} {Math.round(face.confidence)}%
                       </span>
                     </div>
                   );

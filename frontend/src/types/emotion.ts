@@ -18,7 +18,7 @@ export type EmotionKey = (typeof EMOTION_KEYS)[number];
 export interface FaceEmotion {
   track_id: number | null;
   dominate_emotion: string;
-  confidence: number; // 0..1
+  confidence: number; // 0..100
   emotion: Record<string, number>; // điểm 7 cảm xúc (0..100)
   bbox: number[] | null; // [x, y, w, h] theo pixel
 }
@@ -40,7 +40,7 @@ export interface ErrorResponse {
 export interface WebcamFace {
   track_id?: number | null;
   dominate_emotion: string;
-  confidence: number; // 0..1
+  confidence: number; // 0..100
   bbox: number[] | null; // [x, y, w, h] theo pixel của frame
   emotion: Record<string, number>;
 }
