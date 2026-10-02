@@ -13,4 +13,4 @@ class AnalysisSession(Base):
     status: Mapped[str] = mapped_column(String(30), default="processing")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    face_analyses: Mapped[list["FaceAnalysis"]] = relationship(back_populates="analysis_session", cascade="all, delete-orphan")
+    face_analyses: Mapped[list["FaceAnalysis"]] = relationship(back_populates="session", cascade="all, delete-orphan")

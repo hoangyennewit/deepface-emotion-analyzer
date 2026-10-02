@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from backend.src.config.settings import settings
 
 # Kết nối SQLAIChemy với PostgreSql
-engine = create_async_engine(settings.DATABASE_URL, echo=False)
+engine = create_async_engine(settings.database_url, echo=False)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

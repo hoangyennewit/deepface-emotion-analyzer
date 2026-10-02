@@ -4,7 +4,7 @@ from typing import Any
 from sqlalchemy import DateTime, String, Uuid, func, JSON, ForeignKey, Integer, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.src.db.base import Base
-from backend.src.models.analysis_session import AnalysisSession
+
 
 class FaceAnalysis(Base):
     __tablename__ = "face_analyses"
