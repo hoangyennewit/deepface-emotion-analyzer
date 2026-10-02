@@ -66,7 +66,15 @@ export const WebcamAnalysis = () => {
     <div className="space-y-6">
       {/* Tiêu đề */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Phân tích Webcam trực tiếp</h1>
+        <h1
+          style={{
+            margin: "0 0 20px 0",
+            fontSize: "26px",
+            fontWeight: 700,
+          }}
+        >
+          Phân tích Webcam trực tiếp
+        </h1>
         <p className="text-slate-500 text-sm mt-1">
           Bật camera để nhận diện cảm xúc khuôn mặt theo thời gian thực bằng DeepFace
         </p>
