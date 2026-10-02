@@ -14,7 +14,7 @@ export interface UseWebcamStream {
   error: string | null;
   start: () => Promise<void>;
   stop: () => void;
-  captureFrame: (quality?: number) => Blob | null;
+  captureFrame: (quality?: number) => Promise<Blob | null>;
 }
 
 export function useWebcamStream(facingMode: "user" | "environment" = "user"): UseWebcamStream {
@@ -72,7 +72,7 @@ export function useWebcamStream(facingMode: "user" | "environment" = "user"): Us
   }, [facingMode]);
 
   /** Chụp frame hiện tại của video thành JPEG Blob (null nếu camera chưa sẵn sàng) */
-  const captureFrame = useCallback((quality = 0.8): Blob | null => {
+  const captureFrame = useCallback(async (quality = 0.8): Promise<Blob | null> => {
     const video = videoRef.current;
     if (!video || video.readyState < 2 || video.videoWidth === 0) return null;
 
@@ -82,9 +82,9 @@ export function useWebcamStream(facingMode: "user" | "environment" = "user"): Us
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(video, 0, 0);
-    return new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", quality)
-    ) as unknown as Blob | null;
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", quality);
+    });
   }, []);
 
   return { videoRef, isActive, isLoading, error, start, stop, captureFrame };

@@ -39,10 +39,10 @@ export interface ErrorResponse {
 /** Một khuôn mặt cho overlay webcam (response POST /emotion/webcam) */
 export interface WebcamFace {
   track_id?: number | null;
-  dominant_emotion: string;
+  dominate_emotion: string;
   confidence: number; // 0..1
-  bbox: number[]; // [x, y, w, h] theo pixel của frame
-  emotion_scores: Record<string, number>;
+  bbox: number[] | null; // [x, y, w, h] theo pixel của frame
+  emotion: Record<string, number>;
 }
 
 export interface WebcamResponse {

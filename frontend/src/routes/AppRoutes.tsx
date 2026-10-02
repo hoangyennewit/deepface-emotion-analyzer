@@ -3,7 +3,8 @@ import { AppLayout } from '../components/layout/AppLayout';
 import { HomePage } from '../pages/HomePage';
 import { ImageAnalysisPage } from '../pages/ImageAnalysisPage';
 import VideoAnalysisPage from '../pages/VideoAnalysisPage';
-import { WebcamAnalysisPage } from '../pages/WebcamAnalysisPage';
+//import { WebcamAnalysisPage } from '../pages/WebcamAnalysisPage';
+import {WebcamAnalysis} from '../pages/WebcamAnalysis';
 import { HistoryPage } from '../pages/HistoryPage';
 import { HistoryDetailPage } from '../pages/HistoryDetailPage';
 import { SettingsPage } from '../pages/SettingsPage';
@@ -17,7 +18,8 @@ function AppRoutes() {
         { index: true, element: <HomePage /> },
         { path: 'image-analysis', element: <ImageAnalysisPage /> },
         { path: 'video-analysis', element: <VideoAnalysisPage /> },
-        { path: 'webcam-analysis', element: <WebcamAnalysisPage /> },
+        //{ path: 'webcam-analysis', element: <WebcamAnalysisPage /> },
+        { path : 'webcam-analysis', element: <WebcamAnalysis /> },
         { path: 'history', element: <HistoryPage /> },
         { path: 'history/:id', element: <HistoryDetailPage /> },
         { path: 'settings', element: <SettingsPage /> },

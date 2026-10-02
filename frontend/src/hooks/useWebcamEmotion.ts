@@ -63,13 +63,13 @@ export function useWebcamEmotion(enabled: boolean) {
         const bbox = f.bbox ?? [0, 0, 0, 0];
         return {
           id: f.track_id ?? i,
-          emotion: normalizeEmotionKey(f.dominant_emotion),
+          emotion: normalizeEmotionKey(f.dominate_emotion),
           confidence: Math.round((f.confidence ?? 0) * 100),
           xPct: (bbox[0] / Math.max(1, videoW)) * 100,
           yPct: (bbox[1] / Math.max(1, videoH)) * 100,
           wPct: (bbox[2] / Math.max(1, videoW)) * 100,
           hPct: (bbox[3] / Math.max(1, videoH)) * 100,
-          scores: f.emotion_scores ?? {},
+          scores: f.emotion ?? {},
         };
       });
     },
@@ -79,7 +79,7 @@ export function useWebcamEmotion(enabled: boolean) {
   /** Một nhịp phân tích: chụp frame -> gọi API -> cập nhật state + thống kê */
   const analyzeTick = useCallback(async () => {
     if (!runningRef.current || inFlightRef.current) return;
-    const blob = captureFrame(0.75);
+    const blob = await captureFrame(0.75);
     if (!blob) return;
 
     inFlightRef.current = true;
@@ -95,11 +95,11 @@ export function useWebcamEmotion(enabled: boolean) {
         setCurrentFaces(faces);
 
         const primary = res.faces?.[0];
-        const rawLabel = primary ? normalizeEmotionKey(primary.dominant_emotion) : null;
+        const rawLabel = primary ? normalizeEmotionKey(primary.dominate_emotion) : null;
         setSmoothedEmotion(emotionSmootherRef.current.smooth(rawLabel));
 
         if (primary) {
-          setSmoothedScores(scoreSmootherRef.current.smooth(primary.emotion_scores ?? {}));
+          setSmoothedScores(scoreSmootherRef.current.smooth(primary.emotion ?? {}));
         }
 
         // Thống kê phiên
