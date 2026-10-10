@@ -8,9 +8,13 @@ import { WebcamAnalysis } from '../pages/WebcamAnalysis';
 import { History } from '../pages/History';
 import { HistoryDetailPage } from '../pages/HistoryDetailPage';
 import { SettingsPage } from '../pages/SettingsPage';
+import { LoginPage } from '../pages/LoginPage';
+import { RegisterPage } from '../pages/RegisterPage';
 
 function AppRoutes() {
   const routes = [
+    { path: '/login', element: <LoginPage /> },
+    { path: '/register', element: <RegisterPage /> },
     {
       path: '/',
       element: <AppLayout />,

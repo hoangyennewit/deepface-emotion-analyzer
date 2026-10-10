@@ -93,7 +93,9 @@ export const History = () => {
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Lịch sử phân tích</h1>
+          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: '#0F254A' }}>
+            Lịch sử phân tích
+          </h1>
           <p className="text-slate-500 text-sm mt-1">
             Toàn bộ phiên phân tích ảnh và video đã lưu trên hệ thống
           </p>

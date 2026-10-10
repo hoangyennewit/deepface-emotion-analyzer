@@ -3,10 +3,15 @@ import logging
 import time
 from typing import Any
 
+import cv2
+import numpy as np
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.exceptions.ai_exceptions import ( NoFaceDetectedException, ModelInferenceException )
+from src.exceptions.ai_exceptions import (
+    ModelInferenceException,
+    NoFaceDetectedException,
+)
 from src.repositories.analysis_repository import (
     complete_analysis_session,
     create_analysis_session,
@@ -20,11 +25,31 @@ from src.services.file_service import (
 )
 from src.services.image_analyzer import (
     analyze_static_image,
+    analyze_webcam_image,
     validate_image_upload,
 )
 from src.services.video_processor import VideoProcessor
 
 logger = logging.getLogger(__name__)
+
+# Số frame lấy mẫu mỗi giây. Hạ xuống 0.5 để video xử lý nhanh gấp đôi.
+VIDEO_FPS = 1.0
+
+# Một khuôn mặt phải xuất hiện ở ít nhất tỉ lệ này trong số frame có mặt
+# thì mới được tính (loại mặt ảo chỉ xuất hiện ở vài frame).
+MIN_APPEARANCE_RATIO = 0.3
+
+# Nếu frame gần giống frame đã phân tích trước đó (độ lệch trung bình pixel
+# trên ảnh thu nhỏ nhỏ hơn ngưỡng này) thì dùng lại kết quả, không chạy model.
+# Đặt 0 để tắt.
+SIMILAR_FRAME_THRESHOLD = 2.0
+
+
+def _frame_signature(image: np.ndarray) -> np.ndarray:
+    """Ảnh xám thu nhỏ dùng để so sánh độ giống nhau giữa các frame."""
+    small = cv2.resize(image, (64, 36), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+    return gray.astype(np.float32)
 
 
 def _bbox_to_dict(bbox: Any) -> dict[str, float] | None:
@@ -117,7 +142,7 @@ async def analyze_image_service(
     file: UploadFile,
     db: AsyncSession,
 ) -> list[FaceEmotionResponse]:
-    """Phân tích ảnh và lưu kết quả vào PostgreSQL."""
+    """Phân tích ảnh (thuật toán mới, chế độ chính xác) và lưu vào PostgreSQL."""
     validate_image_upload(
         file.content_type,
         file.filename,
@@ -125,7 +150,7 @@ async def analyze_image_service(
 
     source_name = file.filename or "uploaded_image.jpg"
 
-    # [CHỈNH] Đọc file qua file_service thay vì đọc trực tiếp tại service.
+    # Đọc file qua file_service thay vì đọc trực tiếp tại service.
     image_bytes = await read_image_upload(file)
 
     faces = await asyncio.to_thread(
@@ -144,7 +169,7 @@ async def analyze_image_service(
         for face in faces
     ]
 
-    # [THÊM] Chuẩn hóa dữ liệu và lưu Repository.
+    # Chuẩn hóa dữ liệu và lưu Repository.
     face_records = [
         _build_face_record(
             face,
@@ -172,20 +197,23 @@ async def analyze_video_service(
     """
     Phân tích video theo frame lấy mẫu và lưu toàn bộ face detection vào DB.
 
+    Dùng thuật toán mới ở chế độ nhanh (fast=True) và tái sử dụng kết quả
+    cho các frame gần giống nhau để giảm thời gian xử lý.
+
     Lưu ý:
-    track_id hiện do image_analyzer tạo theo thứ tự khuôn mặt trong từng frame,
-    chưa phải ID theo dõi cùng một người xuyên suốt video.
+    track_id hiện do image_analyzer tạo theo thứ tự khuôn mặt (trái -> phải)
+    trong từng frame, chưa phải ID theo dõi cùng một người xuyên suốt video.
     """
     source_name = file.filename or "uploaded_video.mp4"
     logger.info("Bắt đầu phân tích video: %s", source_name)
 
-    # [THÊM] Toàn bộ xử lý file tạm giao cho file_service.
+    # Toàn bộ xử lý file tạm giao cho file_service.
     temp_path = await save_temporary_file(file)
 
     try:
         processor = VideoProcessor(
             temp_path,
-            frames_per_second=1.0,
+            frames_per_second=VIDEO_FPS,
             resize_to=(640, 360),
         )
 
@@ -198,40 +226,67 @@ async def analyze_video_service(
         # Giữ một bbox đại diện tốt nhất cho từng face index để frontend hiển thị.
         representative_faces: dict[int, dict[str, Any]] = {}
 
+        # Đếm số frame mà mỗi face index xuất hiện để lọc mặt ảo.
+        face_appearances: dict[int, int] = {}
+        frames_with_faces = 0
+
+        # Bộ nhớ đệm cho frame gần giống nhau.
+        last_signature: np.ndarray | None = None
+        last_faces: list[dict[str, Any]] | None = None
+
         processed_frames = 0
+        reused_frames = 0
 
         for frame in processor.extract_frames():
             processed_frames += 1
             t0 = time.perf_counter()
 
-            try:
-                faces = await asyncio.to_thread(
-                    analyze_static_image,
-                    frame.image,
-                    detector_backend="opencv",
-                    enforce_detection=True,
-                    use_fallback=False,
-                )
-            except NoFaceDetectedException:
-                logger.info("Frame %d: không có mặt", frame.frame_index)
-                continue
+            signature = (
+                _frame_signature(frame.image)
+                if SIMILAR_FRAME_THRESHOLD > 0
+                else None
+            )
 
-            except ModelInferenceException:
-                logger.exception("Frame %d: lỗi suy luận", frame.frame_index)
-                continue
+            if (
+                signature is not None
+                and last_signature is not None
+                and last_faces is not None
+                and float(np.mean(np.abs(signature - last_signature)))
+                < SIMILAR_FRAME_THRESHOLD
+            ):
+                # Frame gần như không đổi -> dùng lại kết quả trước đó.
+                faces = last_faces
+                reused_frames += 1
+            else:
+                try:
+                    faces = await asyncio.to_thread(
+                        analyze_static_image,
+                        frame.image,
+                        fast=True,
+                    )
+                except NoFaceDetectedException:
+                    faces = []
 
-            logger.info("Frame %d: %d mặt (%.1fs)", frame.frame_index, len(faces), time.perf_counter() - t0)
+                except ModelInferenceException:
+                    logger.exception(
+                        "Frame %d: lỗi suy luận", frame.frame_index
+                    )
+                    continue
 
-            # Khi enforce_detection=False, DeepFace có thể dùng toàn frame
-            # làm fallback. Không coi trường hợp đó là một khuôn mặt thật.
-            faces = [
-                face
-                for face in faces
-                if not face.get("is_full_frame", False)
-            ]
+                last_signature = signature
+                last_faces = faces
+
+            logger.info(
+                "Frame %d: %d mặt (%.2fs)",
+                frame.frame_index,
+                len(faces),
+                time.perf_counter() - t0,
+            )
 
             if not faces:
                 continue
+
+            frames_with_faces += 1
 
             frame_emotion_totals: dict[str, float] = {}
 
@@ -253,7 +308,7 @@ async def analyze_video_service(
 
                 record = _build_face_record(
                     face,
-                    # [CHỈNH] Dùng frame_index thật từ VideoProcessor.
+                    # Dùng frame_index thật từ VideoProcessor.
                     frame_index=frame.frame_index,
                     timestamp=frame.timestamp,
                     fallback_track_id=face_index,
@@ -266,6 +321,10 @@ async def analyze_video_service(
 
                 frame_height, frame_width = frame.image.shape[:2]
                 track_id = int(record["track_id"])
+
+                face_appearances[track_id] = (
+                    face_appearances.get(track_id, 0) + 1
+                )
 
                 frontend_face = {
                     "id": track_id,
@@ -320,7 +379,7 @@ async def analyze_video_service(
         else:
             emotion_summary = {}
 
-        # [THÊM] Lưu tất cả face detection của các frame đã lấy mẫu.
+        # Lưu tất cả face detection của các frame đã lấy mẫu.
         await _persist_analysis(
             db=db,
             source_type="video",
@@ -328,9 +387,12 @@ async def analyze_video_service(
             face_records=database_face_records,
         )
 
+        # Chỉ giữ khuôn mặt xuất hiện đủ nhiều frame -> loại mặt ảo.
         faces_for_frontend = [
             representative_faces[key]
             for key in sorted(representative_faces)
+            if face_appearances.get(key, 0)
+            >= frames_with_faces * MIN_APPEARANCE_RATIO
         ]
 
         result = {
@@ -343,16 +405,17 @@ async def analyze_video_service(
             "timeline": timeline,
         }
         logger.info(
-            "Hoàn tất phân tích video: %s | %d/%d frame | %d khuôn mặt đại diện",
+            "Hoàn tất phân tích video: %s | %d/%d frame (%d frame dùng lại) | %d khuôn mặt đại diện",
             source_name,
             processed_frames,
             metadata["total_frames"],
+            reused_frames,
             len(faces_for_frontend),
         )
         return result
 
     finally:
-        # [CHỈNH] Việc xóa file cũng giao lại cho file_service.
+        # Việc xóa file cũng giao lại cho file_service.
         delete_file(temp_path)
 
 
@@ -360,7 +423,8 @@ async def analyze_webcam_service(
     file: UploadFile,
 ) -> dict[str, Any]:
     """
-    Phân tích một frame webcam.
+    Phân tích một frame webcam bằng thuật toán CŨ
+    (OpenCV + RetinaFace dự phòng).
     Tạm thời không lưu Repository/PostgreSQL.
     """
     validate_image_upload(
@@ -371,7 +435,7 @@ async def analyze_webcam_service(
     image_bytes = await read_image_upload(file)
 
     faces = await asyncio.to_thread(
-        analyze_static_image,
+        analyze_webcam_image,
         image_bytes,
     )
 
