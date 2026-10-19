@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.router import api_router
+from fastapi.staticfiles import StaticFiles
+from src.services.media_storage import MEDIA_ROOT
 
 # Import model để Base.metadata biết có bảng nào (đường dẫn lấy từ repository của bạn)
 from src.models.analysis_session import AnalysisSession  # noqa: F401
@@ -42,6 +44,7 @@ app.add_middleware(
 
 app.include_router(api_router)
 
+app.mount("/media", StaticFiles(directory=MEDIA_ROOT), name="media")
 @app.get("/")
 def root():
     return {"message": "Welcome to the Emotion Analysis API!"}

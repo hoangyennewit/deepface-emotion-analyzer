@@ -2,6 +2,8 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, UploadFile
 
+from pydantic import ValidationError
+from src.schemas.webcam_session_schema import WebcamSessionPayload
 from src.exceptions.ai_exceptions import AIException
 from src.schemas.analysis_schema import AnalysisResponse
 from src.schemas.error_schema import ErrorResponse
@@ -9,6 +11,7 @@ from src.services.emotion_service import (
     analyze_image_service,
     analyze_video_service,
     analyze_webcam_service,
+    save_webcam_session_service,
 )
 
 
@@ -94,3 +97,21 @@ async def analyze_webcam_controller(
             status_code=400,
             detail=exc.message,
         )
+async def save_webcam_session_controller(
+    video: UploadFile,
+    meta: str,
+    db: AsyncSession,
+):
+    try:
+        payload = WebcamSessionPayload.model_validate_json(meta)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Dữ liệu phiên webcam không hợp lệ.") from exc
+
+    try:
+        session_id = await save_webcam_session_service(video=video, payload=payload, db=db)
+        return {"success": True, "session_id": session_id}
+    except AIException as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+    except Exception as exc:
+        logger.exception("Lưu phiên webcam thất bại")
+        raise HTTPException(status_code=500, detail="Không thể lưu phiên webcam.") from exc
