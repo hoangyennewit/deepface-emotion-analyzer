@@ -4,7 +4,7 @@ import { useWebcamEmotion } from "../hooks/useWebcamEmotion";
 import { FaceOverlay } from "../components/FaceOverlay";
 import { EmotionBars } from "../components/EmotionBars";
 import { getEmotionMeta } from "../constants/emotions";
-
+import { ChatbotWidget } from '../components/ChatbotWidget';
 // ============================================================
 // Màn hình Phân tích Webcam trực tiếp (Task 2)
 // Bật camera -> chụp frame -> gửi backend /emotion/webcam -> overlay realtime
@@ -251,6 +251,8 @@ export const WebcamAnalysis = () => {
           </div>
         </div>
       </div>
-    </div>
+      <ChatbotWidget />
+    </div> 
   );
+  
 };
