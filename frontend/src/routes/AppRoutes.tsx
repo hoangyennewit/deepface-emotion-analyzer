@@ -10,11 +10,12 @@ import { HistoryDetailPage } from '../pages/HistoryDetailPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
-
+import { Auth } from '../pages/Auth';
 function AppRoutes() {
   const routes = [
     { path: '/login', element: <LoginPage /> },
     { path: '/register', element: <RegisterPage /> },
+    { path: '/auth', element: <Auth /> },
     {
       path: '/',
       element: <AppLayout />,
@@ -26,6 +27,7 @@ function AppRoutes() {
         { path: 'history', element: <History /> },
         { path: 'history/:id', element: <HistoryDetailPage /> },
         { path: 'settings', element: <SettingsPage /> },
+   
       ],
     },
   ];
