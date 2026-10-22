@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import {
-  analyzeWebcamFrame,
   getWebcamSettings,
   updateWebcamSettings,
   type WebcamSettings,
 } from '../services/api';
+import { analyzeWebcamFrameLive, ApiError } from '../services/historyApi';
+import { toSampleFaces, useWebcamRecorder } from '../hooks/useWebcamRecorder';
 
 const EMOTION_COLORS: Record<string, string> = {
   happy: '#22C55E',
@@ -33,14 +35,46 @@ const EMOTION_LABELS: Record<string, string> = {
   disgusted: 'Ghê tởm',
 };
 
+const topEmotion = (scores: Record<string, number>): string =>
+  Object.entries(scores).sort(([, a], [, b]) => b - a)[0]?.[0] ?? 'neutral';
+
+// Điểm trung bình của tất cả khuôn mặt đang thấy
+const averageScores = (list: Record<string, number>[]): Record<string, number> => {
+  const totals: Record<string, number> = {};
+  list.forEach((scores) =>
+    Object.entries(scores).forEach(([k, v]) => {
+      totals[k] = (totals[k] ?? 0) + Number(v);
+    })
+  );
+  const n = Math.max(list.length, 1);
+  return Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, v / n]));
+};
+
+// Tối đa số khuôn mặt hiện chi tiết ở ô "Kết quả hiện tại"
+const MAX_FACES_LISTED = 4;
+
+interface LiveFace {
+  dominant: string;
+  scores: Record<string, number>;
+  bbox: number[] | null;
+}
+
 export const WebcamAnalysisPage: React.FC = () => {
+  const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const busyRef = useRef(false); // đang chờ kết quả của frame trước
+
+  const { recording, saving, start: startRecording, addSample, stopAndSave } = useWebcamRecorder();
 
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [isDetecting, setIsDetecting] = useState<boolean>(false);
-  const [isMicOn, setIsMicOn] = useState<boolean>(true);
+  const [mirrored, setMirrored] = useState<boolean>(true); // hiển thị như soi gương
+  const [videoAspect, setVideoAspect] = useState<string>('16 / 9');
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [savedSessionId, setSavedSessionId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string>('');
+  const [analysisError, setAnalysisError] = useState<string>('');
 
   const [settings, setSettings] = useState<WebcamSettings>({
     camera_id: 'default',
@@ -51,24 +85,30 @@ export const WebcamAnalysisPage: React.FC = () => {
     auto_save: true,
   });
 
-  const [currentFace, setCurrentFace] = useState<{
-    dominant: string;
-    confidence: number;
-    scores: Record<string, number>;
-    bbox: [number, number, number, number];
-  } | null>(null);
+  // Tất cả khuôn mặt thấy được ở frame mới nhất
+  const [currentFaces, setCurrentFaces] = useState<LiveFace[]>([]);
+  const [frameSize, setFrameSize] = useState({ width: 1280, height: 720 });
 
   // Load webcam settings from API
   useEffect(() => {
     getWebcamSettings().then(setSettings).catch(console.error);
   }, []);
 
+  // Rời trang thì tắt camera, tránh để camera chạy ngầm
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => {
+      (video?.srcObject as MediaStream | null)?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
   // Start webcam stream
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: isMicOn,
+        // Nhận diện chỉ lấy 1 frame/giây nên 24 fps là đủ, giảm tải mã hóa khi ghi video
+        video: { width: 1280, height: 720, frameRate: { ideal: 24, max: 24 } },
+        audio: false, // không cần âm thanh, đỡ tốn CPU khi ghi video
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -90,45 +130,112 @@ export const WebcamAnalysisPage: React.FC = () => {
     }
     setIsStreaming(false);
     setIsDetecting(false);
-    setCurrentFace(null);
+    setCurrentFaces([]);
+  };
+
+  // Kết thúc ghi và lưu phiên (phải gọi trước khi dừng stream)
+  const finishRecording = async () => {
+    if (!recording) return;
+    try {
+      const result = await stopAndSave(`Webcam ${new Date().toLocaleString('vi-VN')}`);
+      if (result) setSavedSessionId(result.session_id);
+      else setSaveError('Phiên dưới 1 giây nên chưa được lưu. Hãy nhận diện lâu hơn.');
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Không lưu được phiên vào lịch sử.');
+    }
+  };
+
+  const handleStartDetect = async () => {
+    setSavedSessionId(null);
+    setSaveError('');
+    setAnalysisError('');
+    busyRef.current = false;
+    if (!isStreaming) await startCamera();
+
+    const stream = videoRef.current?.srcObject;
+    if (!(stream instanceof MediaStream)) return; // camera chưa mở được
+
+    if (settings.auto_save) {
+      try {
+        startRecording(stream);
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : 'Không bắt đầu ghi được video.');
+      }
+    }
+    setIsDetecting(true);
+  };
+
+  const handleStopDetect = async () => {
+    setIsDetecting(false);
+    await finishRecording();
+  };
+
+  const handleStopCamera = async () => {
+    setIsDetecting(false);
+    await finishRecording();
+    stopCamera();
   };
 
   // Realtime detection loop
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval>;
-    if (isStreaming && isDetecting) {
-      timer = setInterval(async () => {
-        if (!videoRef.current || !canvasRef.current) return;
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        if (!ctx || video.videoWidth === 0) return;
+    if (!isStreaming || !isDetecting) return;
 
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const timer = setInterval(() => {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas || video.videoWidth === 0 || busyRef.current) return;
 
-        canvas.toBlob(async (blob) => {
-          if (!blob) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Luôn chụp ảnh gốc (không lật) để gửi phân tích
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const capturedAt = performance.now();
+      const frameWidth = canvas.width;
+      const frameHeight = canvas.height;
+
+      busyRef.current = true;
+      canvas.toBlob(
+        async (blob) => {
           try {
-            const data = await analyzeWebcamFrame(blob);
-            if (data.success && data.faces.length > 0) {
-              const f = data.faces[0];
-              setCurrentFace({
-                dominant: f.dominant_emotion,
-                confidence: f.confidence,
-                scores: f.emotion_scores || {},
-                bbox: f.bbox,
-              });
-            }
+            if (!blob) return;
+            const data = await analyzeWebcamFrameLive(blob);
+            const faces = data.faces ?? [];
+
+            const sampleFaces = toSampleFaces(faces);
+            if (sampleFaces.length > 0) addSample(sampleFaces, capturedAt);
+
+            // Giữ lại TẤT CẢ khuôn mặt, không chỉ khuôn mặt đầu tiên
+            const liveFaces: LiveFace[] = faces.map((f) => {
+              const scores = f.emotion ?? {};
+              return {
+                dominant: topEmotion(scores),
+                scores,
+                bbox: Array.isArray(f.bbox) && f.bbox.length === 4 ? f.bbox : null,
+              };
+            });
+            setFrameSize({ width: frameWidth, height: frameHeight });
+            setCurrentFaces(liveFaces);
+            setAnalysisError('');
           } catch (e) {
-            console.error('Frame detect err:', e);
+            setCurrentFaces([]);
+            // 400 = frame này không có khuôn mặt, không phải lỗi hệ thống
+            if (!(e instanceof ApiError && e.status === 400)) {
+              setAnalysisError(e instanceof Error ? e.message : 'Không phân tích được khung hình');
+            }
+          } finally {
+            busyRef.current = false;
           }
-        }, 'image/jpeg', 0.8);
-      }, 1000);
-    }
+        },
+        'image/jpeg',
+        0.8
+      );
+    }, 1000);
+
     return () => clearInterval(timer);
-  }, [isStreaming, isDetecting]);
+  }, [isStreaming, isDetecting, addSample]);
 
   const handleSaveSettings = async (newSettings: Partial<WebcamSettings>) => {
     try {
@@ -139,21 +246,30 @@ export const WebcamAnalysisPage: React.FC = () => {
     }
   };
 
-  // Pie chart data
-  const pieData = currentFace
-    ? Object.entries(currentFace.scores)
-        .map(([k, v]) => ({
-          name: EMOTION_LABELS[k] || k,
-          value: Math.round(v),
-          rawKey: k,
-        }))
-        .filter((d) => d.value > 0)
-        .sort((a, b) => b.value - a.value)
-    : [
-        { name: 'Hạnh phúc', value: 70, rawKey: 'happy' },
-        { name: 'Bình thường', value: 20, rawKey: 'neutral' },
-        { name: 'Buồn', value: 10, rawKey: 'sad' },
-      ];
+  // Khung mặt theo %, lật theo chiều ngang nếu video đang hiển thị dạng gương.
+  // Sắp xếp từ trái sang phải theo vị trí đang nhìn thấy trên màn hình.
+  const shownFaces = currentFaces
+    .map((face) => {
+      const b = face.bbox;
+      const box = b
+        ? {
+            left: ((mirrored ? frameSize.width - (b[0] + b[2]) : b[0]) / frameSize.width) * 100,
+            top: (b[1] / frameSize.height) * 100,
+            width: (b[2] / frameSize.width) * 100,
+            height: (b[3] / frameSize.height) * 100,
+          }
+        : null;
+      return { face, box };
+    })
+    .sort((a, b) => (a.box?.left ?? Infinity) - (b.box?.left ?? Infinity));
+
+  const multiple = shownFaces.length > 1;
+
+  const avgScores = averageScores(currentFaces.map((f) => f.scores));
+  const pieData = Object.entries(avgScores)
+    .sort(([, a], [, b]) => b - a)
+    .map(([k, v]) => ({ name: EMOTION_LABELS[k] || k, value: Math.round(v), rawKey: k }))
+    .filter((d) => d.value > 0);
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -190,7 +306,7 @@ export const WebcamAnalysisPage: React.FC = () => {
             style={{
               position: 'relative',
               width: '100%',
-              height: '420px',
+              aspectRatio: isStreaming ? videoAspect : '16 / 9',
               backgroundColor: '#0F172A',
               borderRadius: '16px',
               overflow: 'hidden',
@@ -203,10 +319,14 @@ export const WebcamAnalysisPage: React.FC = () => {
               ref={videoRef}
               playsInline
               muted
+              onLoadedMetadata={(e) =>
+                setVideoAspect(`${e.currentTarget.videoWidth} / ${e.currentTarget.videoHeight}`)
+              }
               style={{
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
+                transform: mirrored ? 'scaleX(-1)' : 'none',
                 display: isStreaming ? 'block' : 'none',
               }}
             />
@@ -219,39 +339,71 @@ export const WebcamAnalysisPage: React.FC = () => {
               </div>
             )}
 
-            {/* Live Bounding Box Tag */}
-            {isStreaming && isDetecting && currentFace && settings.show_face_box && (
-              <div
+            {isStreaming && (
+              <button
+                onClick={() => setMirrored((m) => !m)}
                 style={{
                   position: 'absolute',
-                  top: '25%',
-                  left: '35%',
-                  width: '30%',
-                  height: '45%',
-                  border: '2px solid #22C55E',
-                  borderRadius: '6px',
-                  pointerEvents: 'none',
+                  top: '10px',
+                  right: '10px',
+                  padding: '4px 12px',
+                  borderRadius: '999px',
+                  border: 'none',
+                  backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                  color: '#FFFFFF',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
                 }}
               >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '-26px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    backgroundColor: '#22C55E',
-                    color: '#FFFFFF',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    padding: '2px 10px',
-                    borderRadius: '4px',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {currentFace.dominant} {Math.round(currentFace.confidence * 100)}%
-                </span>
-              </div>
+                Gương: {mirrored ? 'bật' : 'tắt'}
+              </button>
             )}
+
+            {/* Khung cho từng khuôn mặt, bám theo bbox từ backend */}
+            {isStreaming &&
+              isDetecting &&
+              settings.show_face_box &&
+              shownFaces.map(({ face, box }, index) => {
+                if (!box) return null;
+                const color = EMOTION_COLORS[face.dominant] || '#22C55E';
+                return (
+                  <div
+                    key={index}
+                    style={{
+                      position: 'absolute',
+                      left: `${box.left}%`,
+                      top: `${box.top}%`,
+                      width: `${box.width}%`,
+                      height: `${box.height}%`,
+                      border: `2px solid ${color}`,
+                      borderRadius: '6px',
+                      pointerEvents: 'none',
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: box.top < 8 ? '2px' : '-26px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        backgroundColor: color,
+                        color: '#FFFFFF',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        padding: '2px 10px',
+                        borderRadius: '4px',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {multiple ? `Người ${index + 1} · ` : ''}
+                      {EMOTION_LABELS[face.dominant] || face.dominant}{' '}
+                      {Math.round(face.scores[face.dominant] ?? 0)}%
+                    </span>
+                  </div>
+                );
+              })}
           </div>
 
           {/* Controls Bar */}
@@ -269,7 +421,8 @@ export const WebcamAnalysisPage: React.FC = () => {
           >
             {/* Toggle Camera */}
             <button
-              onClick={isStreaming ? stopCamera : startCamera}
+              onClick={isStreaming ? () => void handleStopCamera() : startCamera}
+              disabled={saving}
               title={isStreaming ? 'Tắt Camera' : 'Bật Camera'}
               style={{
                 width: '44px',
@@ -279,7 +432,7 @@ export const WebcamAnalysisPage: React.FC = () => {
                 backgroundColor: isStreaming ? '#EFF6FF' : '#F1F5F9',
                 color: isStreaming ? '#2563EB' : '#64748B',
                 fontSize: '18px',
-                cursor: 'pointer',
+                cursor: saving ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -290,10 +443,8 @@ export const WebcamAnalysisPage: React.FC = () => {
 
             {/* Big Red Record/Detect toggle */}
             <button
-              onClick={() => {
-                if (!isStreaming) startCamera();
-                setIsDetecting(!isDetecting);
-              }}
+              onClick={() => void (isDetecting ? handleStopDetect() : handleStartDetect())}
+              disabled={saving}
               title={isDetecting ? 'Dừng nhận diện' : 'Bắt đầu nhận diện'}
               style={{
                 width: '56px',
@@ -303,7 +454,8 @@ export const WebcamAnalysisPage: React.FC = () => {
                 backgroundColor: isDetecting ? '#DC2626' : '#EF4444',
                 color: '#FFFFFF',
                 fontSize: '22px',
-                cursor: 'pointer',
+                cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.6 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -313,32 +465,68 @@ export const WebcamAnalysisPage: React.FC = () => {
               {isDetecting ? '⏹' : '▶'}
             </button>
 
-            {/* Toggle Mic */}
-            <button
-              onClick={() => setIsMicOn(!isMicOn)}
-              title={isMicOn ? 'Tắt Mic' : 'Bật Mic'}
-              style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '50%',
-                border: 'none',
-                backgroundColor: isMicOn ? '#EFF6FF' : '#F1F5F9',
-                color: isMicOn ? '#2563EB' : '#64748B',
-                fontSize: '18px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              🎤
-            </button>
           </div>
 
           {/* Status Label */}
-          <div style={{ textAlign: 'center', fontSize: '13px', color: '#16A34A', fontWeight: 600 }}>
-            {isDetecting ? '● Đang nhận diện cảm xúc...' : '● Sẵn sàng nhận diện'}
+          <div
+            style={{
+              textAlign: 'center',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: recording || saving ? '#DC2626' : '#16A34A',
+            }}
+          >
+            {saving
+              ? 'Đang lưu phiên vào lịch sử...'
+              : recording
+              ? '● Đang nhận diện và ghi video vào lịch sử'
+              : isDetecting
+              ? '● Đang nhận diện cảm xúc (không lưu lịch sử)'
+              : '● Sẵn sàng nhận diện'}
           </div>
+
+          <div style={{ textAlign: 'center', fontSize: '12px', color: '#64748B' }}>
+            {settings.auto_save
+              ? 'Phiên này sẽ được lưu vào lịch sử (video và kết quả).'
+              : 'Phiên này sẽ không được lưu. Bật "Lưu video và kết quả vào lịch sử" trong cài đặt để lưu.'}
+          </div>
+
+          {isDetecting && currentFaces.length === 0 && !analysisError && (
+            <div style={{ textAlign: 'center', fontSize: '13px', color: '#64748B' }}>
+              Chưa thấy khuôn mặt. Hãy nhìn thẳng vào camera, đủ sáng.
+            </div>
+          )}
+
+          {analysisError && (
+            <div style={{ padding: '10px 14px', backgroundColor: '#FEE2E2', color: '#DC2626', borderRadius: '8px', fontSize: '13px' }}>
+              Không phân tích được: {analysisError}
+            </div>
+          )}
+
+          {savedSessionId && (
+            <button
+              onClick={() => navigate(`/history/${savedSessionId}`)}
+              style={{
+                alignSelf: 'center',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: '#DCFCE7',
+                color: '#16A34A',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Đã lưu vào lịch sử. Xem phiên này
+            </button>
+          )}
+
+          {saveError && (
+            <div style={{ padding: '10px 14px', backgroundColor: '#FEE2E2', color: '#DC2626', borderRadius: '8px', fontSize: '13px' }}>
+              {saveError}
+            </div>
+          )}
         </div>
 
         {/* Right: Realtime Emotion Results & Pie Chart */}
@@ -346,81 +534,108 @@ export const WebcamAnalysisPage: React.FC = () => {
           {/* Card 1: Kết quả hiện tại */}
           <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '24px', border: '1px solid #E2E8F0' }}>
             <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 700, color: '#0F254A' }}>
-              Kết quả hiện tại
+              Kết quả hiện tại{multiple ? ` (${shownFaces.length} người)` : ''}
             </h3>
 
-            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-              <div
-                style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '12px',
-                  backgroundColor: '#EFF6FF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '32px',
-                  border: '2px solid #BFDBFE',
-                }}
-              >
-                👤
+            {shownFaces.length === 0 ? (
+              <div style={{ fontSize: '13px', color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>
+                Chưa có kết quả. Bấm ▶ và nhìn vào camera.
               </div>
-
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {(currentFace ? Object.entries(currentFace.scores).sort(([, a], [, b]) => b - a).slice(0, 3) : [
-                  ['happy', 88],
-                  ['neutral', 30],
-                  ['sad', 5],
-                ]).map(([em, val]) => (
-                  <div key={em} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 35px', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '12px', color: EMOTION_COLORS[em] || '#64748B', fontWeight: 600 }}>
-                      {EMOTION_LABELS[em] || em}
-                    </span>
-                    <div style={{ height: '6px', backgroundColor: '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                {shownFaces.slice(0, MAX_FACES_LISTED).map(({ face }, index) => {
+                  const scores = Object.entries(face.scores).sort(([, a], [, b]) => b - a);
+                  return (
+                    <div key={index} style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                       <div
                         style={{
-                          height: '100%',
-                          width: `${Math.min(100, Math.max(0, Number(val)))}%`,
-                          backgroundColor: EMOTION_COLORS[em] || '#3B82F6',
-                          borderRadius: '4px',
+                          width: '64px',
+                          height: '64px',
+                          flexShrink: 0,
+                          borderRadius: '12px',
+                          backgroundColor: '#EFF6FF',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: multiple ? '24px' : '32px',
+                          border: `2px solid ${EMOTION_COLORS[face.dominant] || '#BFDBFE'}`,
                         }}
-                      />
+                      >
+                        👤
+                        {multiple && (
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: '#334155' }}>
+                            Người {index + 1}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {scores.slice(0, 3).map(([em, val]) => (
+                          <div key={em} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 35px', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '12px', color: EMOTION_COLORS[em] || '#64748B', fontWeight: 600 }}>
+                              {EMOTION_LABELS[em] || em}
+                            </span>
+                            <div style={{ height: '6px', backgroundColor: '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div
+                                style={{
+                                  height: '100%',
+                                  width: `${Math.min(100, Math.max(0, Number(val)))}%`,
+                                  backgroundColor: EMOTION_COLORS[em] || '#3B82F6',
+                                  borderRadius: '4px',
+                                }}
+                              />
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#64748B', textAlign: 'right' }}>
+                              {Math.round(Number(val))}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <span style={{ fontSize: '11px', color: '#64748B', textAlign: 'right' }}>
-                      {Math.round(Number(val))}%
-                    </span>
+                  );
+                })}
+                {shownFaces.length > MAX_FACES_LISTED && (
+                  <div style={{ fontSize: '12px', color: '#94A3B8', textAlign: 'center' }}>
+                    và {shownFaces.length - MAX_FACES_LISTED} người khác
                   </div>
-                ))}
+                )}
               </div>
-            </div>
+            )}
           </div>
 
           {/* Card 2: Biểu đồ cảm xúc qua webcam */}
           <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '24px', border: '1px solid #E2E8F0' }}>
             <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 700, color: '#0F254A' }}>
-              Biểu đồ cảm xúc qua webcam
+              Biểu đồ cảm xúc qua webcam{multiple ? ' (trung bình)' : ''}
             </h3>
             <div style={{ width: '100%', height: '240px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={75}
-                    innerRadius={40}
-                    label={({ name, percent }) => `${name} ${(((percent as number) ?? 0) * 100).toFixed(0)}%`}
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={EMOTION_COLORS[entry.rawKey] || '#3B82F6'} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => `${value}%`} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              {pieData.length === 0 ? (
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', color: '#94A3B8' }}>
+                  Chưa có dữ liệu
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={75}
+                      innerRadius={40}
+                      label={({ name, percent }) => `${name} ${(((percent as number) ?? 0) * 100).toFixed(0)}%`}
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={EMOTION_COLORS[entry.rawKey] || '#3B82F6'} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => `${value}%`} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
         </div>
@@ -524,7 +739,7 @@ export const WebcamAnalysisPage: React.FC = () => {
               </label>
 
               <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontSize: '14px', color: '#334155' }}>
-                <span>Lưu kết quả tự động</span>
+                <span>Lưu video và kết quả vào lịch sử</span>
                 <input
                   type="checkbox"
                   checked={settings.auto_save}

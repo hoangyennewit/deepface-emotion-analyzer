@@ -285,3 +285,25 @@ async def delete_analysis_session(
     await db.flush()
 
     return True
+async def set_session_media(
+    db: AsyncSession,
+    session_id,
+    *,
+    media_path: str,
+    thumbnail_path: Optional[str],
+    media_width: Optional[int],
+    media_height: Optional[int],
+    duration_seconds: Optional[float],
+) -> Optional[AnalysisSession]:
+    analysis_session = await db.get(AnalysisSession, session_id)
+    if analysis_session is None:
+        return None
+
+    analysis_session.media_path = media_path
+    analysis_session.thumbnail_path = thumbnail_path
+    analysis_session.media_width = media_width
+    analysis_session.media_height = media_height
+    analysis_session.duration_seconds = duration_seconds
+
+    await db.flush()
+    return analysis_session
