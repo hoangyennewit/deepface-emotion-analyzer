@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-
+import { ChatbotWidget } from '../components/ChatbotWidget';
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
 
@@ -244,6 +244,7 @@ export const HomePage: React.FC = () => {
           </p>
         </div>
       </div>
+      <ChatbotWidget/>
     </div>
   );
 };
