@@ -175,6 +175,42 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 - `/chat/emotion` nhận `mode` là `live`, `video` hoặc `dashboard`. Chế độ `live` cần `analysis_data`; `dashboard` có thể nhận `session_id`, `source_type` và `limit`; `video` cần `video_file_id` từ kết quả upload video đã lưu (`save_file=true`), có thể kèm `session_id` để dùng kết quả DeepFace của phiên.
 - Mọi chế độ đều nhận `message`. Chế độ live có thể cấu hình `window_seconds` (1–300). API chỉ nhận mã file video, không nhận đường dẫn hệ thống từ client.
 
+### 5. Kiểm tra chatbot Dashboard với lịch sử thống kê cảm xúc
+
+Chế độ `dashboard` hỏi chatbot dựa trên các kết quả phân tích đã lưu trong database. Khi muốn hỏi về một phiên cụ thể, chỉ cần gửi `session_id`; không cần sao chép toàn bộ JSON lịch sử hoặc upload video lại.
+
+1. Khởi động backend và mở Swagger tại `http://127.0.0.1:8000/docs`.
+2. Mở `GET /emotion/history?type=all`, chọn **Try it out** rồi **Execute**. Có thể dùng `type=image` hoặc `type=video` để lọc; API lịch sử hiện chưa hỗ trợ lọc riêng `webcam`, nên chọn `all` rồi tìm bản ghi có `"type": "webcam"`.
+3. Trong kết quả, sao chép giá trị `"id"` của phiên muốn hỏi. Đây là `session_id`. Kiểm tra `"status": "completed"` để chọn phiên đã phân tích xong.
+4. Mở `POST /chat/emotion`, chọn **Try it out** và gửi JSON. Thay UUID ví dụ bằng `"id"` vừa sao chép:
+
+   ```json
+   {
+     "mode": "dashboard",
+     "message": "Dựa trên thống kê cảm xúc của phiên này, hãy tóm tắt các biểu cảm nổi bật và nêu rõ giới hạn của kết quả.",
+     "session_id": "116c4a5a-c3e3-4e3b-b04e-d6cf4ae1f17f",
+     "source_type": "video",
+     "limit": 1
+   }
+   ```
+
+   Đặt `source_type` trùng với trường `"type"` của phiên: `image`, `video` hoặc `webcam`; có thể dùng `all` nếu không muốn lọc theo loại. `limit` nhận giá trị từ 1 đến 20 và chỉ ảnh hưởng khi không truyền `session_id`.
+
+5. Chọn **Execute**. Response thành công có `"success": true`, `"mode": "dashboard"` và câu trả lời trong `"answer"`. Trường `"model"` cho biết Gemini model đã phản hồi; `"used_fallback"` và `"attempted_models"` cho biết có dùng model dự phòng hay không.
+
+Nếu muốn chatbot tổng hợp nhiều phiên gần nhất thay vì hỏi một phiên cụ thể, bỏ `session_id`, đặt `source_type` phù hợp và chọn `limit`, ví dụ:
+
+```json
+{
+  "mode": "dashboard",
+  "message": "Tóm tắt phân bố cảm xúc trong các phiên video gần đây và nêu những giới hạn khi diễn giải thống kê.",
+  "source_type": "video",
+  "limit": 5
+}
+```
+
+Đảm bảo đã cấu hình `GEMINI_API_KEY` trong `backend/.env` và có dữ liệu lịch sử trong database. Nếu `session_id` không tồn tại, API trả `404`; nếu database chưa có phiên phù hợp, API cũng không thể tạo thống kê cho chatbot. Chế độ Dashboard gửi thống kê đã lưu cho Gemini dưới dạng văn bản; khác với `mode: "video"`, chế độ này không upload video gốc lên Gemini để phân tích.
+
 > Các endpoint hồ sơ người dùng và cài đặt hiện lưu dữ liệu mẫu trong bộ nhớ tiến trình, không phải cơ chế xác thực hay lưu trữ bền vững.
 
 ---

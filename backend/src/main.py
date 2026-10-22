@@ -12,6 +12,7 @@ from src.services.media_storage import MEDIA_ROOT
 from src.models.analysis_session import AnalysisSession  # noqa: F401
 from src.models.face_analysic import FaceAnalysis  # noqa: F401
 from src.db.base import Base
+from src.db.migrations import ensure_analysis_session_media_columns
 from src.db.session import engine
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -21,6 +22,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await ensure_analysis_session_media_columns(conn)
     yield
 
 
