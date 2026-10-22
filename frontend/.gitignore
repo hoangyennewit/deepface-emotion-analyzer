@@ -37,3 +37,6 @@ dist-ssr
 .vite/
 .eslintcache
 *.tsbuildinfo
+
+#Docker
+Dockerfile

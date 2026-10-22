@@ -1,8 +1,8 @@
 # 🌟 Face Emotion Analyzer
 
-Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **Hình ảnh tĩnh**, **Video (Đồng bộ / Xử lý ngầm BackgroundTasks)** và **Webcam trực tiếp** theo thời gian thực.
+Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **hình ảnh tĩnh**, **video** và **webcam trực tiếp**. Backend cung cấp API FastAPI, lưu lịch sử phân tích trong PostgreSQL và xử lý nhận diện bằng DeepFace/OpenCV.
 
-- **Backend:** FastAPI, DeepFace, OpenCV, SQLAlchemy (Async), asyncpg, Alembic, Pydantic Settings.
+- **Backend:** FastAPI, DeepFace, OpenCV, SQLAlchemy Async, asyncpg, Pydantic Settings.
 - **Frontend:** React, Vite, TypeScript, Tailwind CSS, React Router.
 
 ---
@@ -14,7 +14,7 @@ Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **Hình ản
 | **Frontend Web** | http://localhost:5173 | Giao diện phân tích và theo dõi |
 | **Backend API Root** | http://127.0.0.1:8000 | Root service |
 | **Swagger UI Docs** | http://127.0.0.1:8000/docs | Tài liệu kiểm thử API tương tác |
-| **Health Check** | http://127.0.0.1:8000/health | Kiểm tra trạng thái hoạt động backend |
+| **Health Check** | http://127.0.0.1:8000/health/ | Kiểm tra trạng thái hoạt động backend |
 
 ---
 
@@ -22,40 +22,40 @@ Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **Hình ản
 
 ### 1. Backend
 
-Khởi tạo và kích hoạt virtual environment:
+Tạo và kích hoạt virtual environment tại thư mục gốc `Project`:
 
 ```powershell
 # Windows (PowerShell):
 python -m venv deepface-env
 .\deepface-env\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r backend\requirements.txt
 
 # Windows (Command Prompt):
 deepface-env\Scripts\activate.bat
+python -m pip install --upgrade pip
+pip install -r backend\requirements.txt
+```
 
+```bash
 # macOS / Linux:
 python3 -m venv deepface-env
 source deepface-env/bin/activate
-```
-
-Cài đặt các gói phụ thuộc:
-
-```bash
-pip install -r requirements.txt
-pip install opencv-python==4.10.0.84 deepface fastapi "uvicorn[standard]" python-multipart "sqlalchemy[asyncio]" asyncpg alembic pydantic-settings
+python -m pip install --upgrade pip
+pip install -r backend/requirements.txt
 ```
 
 **Mục đích một số thư viện chính:**
 - `deepface`: Trích xuất khuôn mặt và dự đoán xác suất các nhóm cảm xúc.
 - `python-multipart`: Đọc và xử lý luồng upload file multipart/form-data (ảnh, video).
 - `sqlalchemy[asyncio]` & `asyncpg`: Thao tác cơ sở dữ liệu bất đồng bộ với PostgreSQL.
-- `alembic`: Quản lý migration cho lược đồ cơ sở dữ liệu.
+- `opencv-python`: Đọc và xử lý ảnh/video.
 
-Cấu hình file môi trường backend:
+Cấu hình PostgreSQL và file môi trường backend:
+- Cài đặt, khởi động PostgreSQL và tạo database `emotion_analysis_db`.
 - Sao chép file mẫu: `copy backend\.env.example backend\.env` (hoặc `cp backend/.env.example backend/.env` trên Linux/macOS).
-- Mở file `backend/.env` và cập nhật chuỗi kết nối:
-  ```env
-  DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/emotion_db
-  ```
+- Cập nhật `DATABASE_URL` trong `backend/.env` theo định dạng `postgresql+asyncpg://<username>:<password>@localhost:5432/emotion_analysis_db`, thay placeholder bằng thông tin PostgreSQL của bạn.
+- Backend tự tạo các bảng ORM khi khởi động; database cần được tạo trước.
 
 ---
 
@@ -101,7 +101,8 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
      ```
 3. Khởi chạy Uvicorn server:
    ```bash
-   uvicorn backend.src.main:app --reload --host 127.0.0.1 --port 8000
+   cd backend
+   uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
    ```
 4. Đợi thông báo `Uvicorn running on http://127.0.0.1:8000`. Giữ nguyên cửa sổ này.
 
@@ -122,7 +123,7 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 ## 🧭 III. KIẾN TRÚC TRANG FRONTEND
 
 - `/webcam`: Phân tích biểu cảm webcam trực tiếp theo thời gian thực (đọc từng khung hình canvas định dạng JPEG đẩy lên server).
-- `/video`: Tải lên và phân tích video (hỗ trợ cả luồng đồng bộ và luồng ngầm BackgroundTasks).
+- `/video`: Tải lên và phân tích video đồng bộ.
 - `/history`: Lịch sử các phiên phân tích kèm chi tiết độ tin cậy và phân bổ cảm xúc.
 
 ---
@@ -131,15 +132,24 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 
 | Phương thức | Endpoint | Định dạng Body / Tham số | Mô tả chức năng |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/health` | Không | Kiểm tra trạng thái máy chủ backend |
-| `POST` | `/emotion/image` | `multipart/form-data` (`file`) | Phân tích ảnh tĩnh (JPG, PNG, WEBP <= 10MB) |
-| `POST` | `/emotion/webcam` | `multipart/form-data` (`file`) | Phân tích 1 frame ảnh từ webcam canvas |
-| `POST` | `/emotion/video` | `multipart/form-data` (`file`) | Phân tích video dạng đồng bộ (chờ xử lý xong mới trả kết quả) |
-| `POST` | `/emotion/video/background` | `multipart/form-data` (`file`) | Phân tích video chạy ngầm qua `BackgroundTasks`, nhận ngay `job_id` |
-| `GET` | `/emotion/video/status/{id}` | Path param: `id` (job_id) | Tra cứu tiến độ xử lý video (`processing` / `completed` / `failed`) |
-| `GET` | `/emotion/history` | Query param: `?type=image\|video` | Danh sách lịch sử phân tích đã lưu trữ |
-| `GET` | `/emotion/history/{id}` | Path param: `id` | Xem thông tin chi tiết một bản ghi phân tích |
-| `DELETE` | `/emotion/history/{id}` | Path param: `id` | Xóa bản ghi lịch sử phân tích |
+| `GET` | `/` | Không | Thông tin chào mừng API |
+| `GET` | `/health/` | Không | Kiểm tra trạng thái máy chủ backend |
+| `POST` | `/emotion/image` | `multipart/form-data` (`file`) | Phân tích ảnh và trả về cảm xúc/khuôn mặt nhận diện được |
+| `POST` | `/emotion/webcam` | `multipart/form-data` (`file`) | Phân tích một frame ảnh từ webcam |
+| `POST` | `/emotion/video` | `multipart/form-data` (`file`) | Phân tích video đồng bộ; request chờ đến khi xử lý xong |
+| `POST` | `/chat/emotion` | JSON: `mode`, `message` và dữ liệu tùy chọn theo chế độ | Hỏi AI về biểu cảm ở chế độ live, video hoặc dashboard |
+| `GET` | `/emotion/history?type=all` | Query `type`: `all`, `image` hoặc `video` | Danh sách lịch sử phân tích |
+| `GET` | `/emotion/history/{session_id}` | Path param: UUID `session_id` | Xem chi tiết một bản ghi phân tích |
+| `DELETE` | `/emotion/history/{session_id}` | Path param: UUID `session_id` | Xóa bản ghi lịch sử phân tích |
+| `POST` | `/upload/image` | `multipart/form-data`: `file`, `save_file` (mặc định `false`) | Nhận ảnh; lưu bền vững khi `save_file=true` |
+| `POST` | `/upload/video` | `multipart/form-data`: `file`, `save_file` (mặc định `false`) | Nhận video; lưu bền vững khi `save_file=true` |
+| `GET` | `/user/profile` | Không | Lấy hồ sơ mẫu |
+| `PUT` | `/user/profile` | JSON: `name`, `email`, `avatar` (tùy chọn) | Cập nhật hồ sơ mẫu |
+| `POST` | `/user/change-password` | JSON: `old_password`, `new_password` | Endpoint minh họa đổi mật khẩu |
+| `GET` | `/settings/` | Không | Lấy cài đặt hệ thống |
+| `POST` | `/settings/` | JSON: các trường cài đặt (tùy chọn) | Cập nhật cài đặt hệ thống |
+| `GET` | `/settings/webcam` | Không | Lấy cài đặt webcam |
+| `POST` | `/settings/webcam` | JSON: các trường webcam (tùy chọn) | Cập nhật cài đặt webcam |
 
 ---
 
@@ -148,13 +158,24 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 ### 1. Phân tích ảnh tĩnh (`/emotion/image`)
 - Tiếp nhận file ảnh qua multipart form field `file`.
 - Chuyển tiếp tới `backend/src/services/image_analyzer.py` xử lý qua hàm `analyze_static_image()`.
-- Trả về nhóm cảm xúc chiếm ưu thế (dominant emotion), bounding box khuôn mặt và bảng phân bổ xác suất các cảm xúc liên quan.
+- Trả về `success`, tổng số khuôn mặt, thông tin cảm xúc từng khuôn mặt và lỗi (nếu có).
 
-### 2. Xử lý video ngầm (`FastAPI BackgroundTasks`)
-1. Client gửi video lên endpoint `/emotion/video/background`.
-2. Máy chủ sinh mã `job_id`, lưu trạng thái `processing` và lập tức phản hồi về client mà không giữ kết nối chờ.
-3. Tác vụ trích xuất frame và nhận diện DeepFace được đẩy vào Thread Pool chạy ngầm, không gây nghẽn Async Event Loop của server.
-4. Client định kỳ polling qua `GET /emotion/video/status/{job_id}` để nhận trạng thái và lấy kết quả phân tích khi hoàn tất.
+### 2. Phân tích video (`/emotion/video`)
+- Đây là endpoint xử lý đồng bộ: client chờ server phân tích xong video rồi mới nhận kết quả.
+- API hiện tại không cung cấp endpoint background, `job_id` hoặc endpoint polling trạng thái video.
+
+### 3. Webcam và lịch sử
+- `/emotion/webcam` nhận một frame ảnh dưới dạng multipart field `file`.
+- Lịch sử ảnh/video được truy vấn, xem chi tiết và xóa qua `/emotion/history`; `type` nhận `all`, `image` hoặc `video`.
+- Backend kết nối PostgreSQL bất đồng bộ bằng SQLAlchemy và `asyncpg`.
+
+### 4. Upload file
+- Các endpoint `/upload/image` và `/upload/video` nhận field `file` cùng `save_file`.
+- Khi `save_file=true`, file được lưu dưới `outputs/uploads/images` hoặc `outputs/uploads/videos`; khi `false`, API không lưu ảnh lâu dài và video được ghi vào file tạm.
+- `/chat/emotion` nhận `mode` là `live`, `video` hoặc `dashboard`. Chế độ `live` cần `analysis_data`; `dashboard` có thể nhận `session_id`, `source_type` và `limit`; `video` cần `video_file_id` từ kết quả upload video đã lưu (`save_file=true`), có thể kèm `session_id` để dùng kết quả DeepFace của phiên.
+- Mọi chế độ đều nhận `message`. Chế độ live có thể cấu hình `window_seconds` (1–300). API chỉ nhận mã file video, không nhận đường dẫn hệ thống từ client.
+
+> Các endpoint hồ sơ người dùng và cài đặt hiện lưu dữ liệu mẫu trong bộ nhớ tiến trình, không phải cơ chế xác thực hay lưu trữ bền vững.
 
 ---
 
