@@ -29,6 +29,21 @@ from src.services.image_analyzer import (
     validate_image_upload,
 )
 from src.services.video_processor import VideoProcessor
+from pathlib import Path
+
+from src.exceptions.ai_exceptions import (
+    InvalidInputException,   # thêm
+    ModelInferenceException,
+    NoFaceDetectedException,
+)
+from src.repositories.analysis_repository import (
+    complete_analysis_session,
+    create_analysis_session,
+    create_face_analyses,
+    set_session_media,       # thêm
+)
+from src.schemas.webcam_session_schema import WebcamSessionPayload
+from src.services.media_storage import MediaPayload, delete_session_media, store_media
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +115,26 @@ def _build_face_record(
         "timestamp": float(timestamp),
     }
 
+async def _store_media_safely(
+    db: AsyncSession,
+    session_id,
+    media: MediaPayload,
+) -> None:
+    try:
+        stored = await asyncio.to_thread(store_media, session_id, media)
+        await set_session_media(
+            db,
+            session_id,
+            media_path=stored.media_path,
+            thumbnail_path=stored.thumbnail_path,
+            media_width=stored.width,
+            media_height=stored.height,
+            duration_seconds=media.duration_seconds,
+        )
+    except Exception:
+        logger.exception("Không lưu được media của phiên %s", session_id)
+        await asyncio.to_thread(delete_session_media, session_id)
+
 
 async def _persist_analysis(
     db: AsyncSession,
@@ -107,34 +142,35 @@ async def _persist_analysis(
     source_type: str,
     source_name: str,
     face_records: list[dict[str, Any]],
-) -> None:
+    media: MediaPayload | None = None,
+):
     """
-    Điều phối transaction:
-    AnalysisSession -> FaceAnalysis -> completed -> commit.
+    AnalysisSession -> FaceAnalysis -> media -> completed -> commit.
+    Trả về id của phiên vừa lưu.
     """
+    session_id = None
     try:
         analysis_session = await create_analysis_session(
             db=db,
             source_type=source_type,
             source_name=source_name,
         )
+        session_id = analysis_session.id
 
         if face_records:
-            await create_face_analyses(
-                db=db,
-                session_id=analysis_session.id,
-                faces=face_records,
-            )
+            await create_face_analyses(db=db, session_id=session_id, faces=face_records)
 
-        await complete_analysis_session(
-            db=db,
-            session_id=analysis_session.id,
-        )
+        if media is not None:
+            await _store_media_safely(db, session_id, media)
 
+        await complete_analysis_session(db=db, session_id=session_id)
         await db.commit()
+        return session_id
 
     except Exception:
         await db.rollback()
+        if session_id is not None:
+            await asyncio.to_thread(delete_session_media, session_id)
         raise
 
 
@@ -185,6 +221,7 @@ async def analyze_image_service(
         source_type="image",
         source_name=source_name,
         face_records=face_records,
+        media=MediaPayload(kind="image", filename=source_name, data=image_bytes),
     )
 
     return response_faces
@@ -380,11 +417,23 @@ async def analyze_video_service(
             emotion_summary = {}
 
         # Lưu tất cả face detection của các frame đã lấy mẫu.
-        await _persist_analysis(
+        # await _persist_analysis(
+        #     db=db,
+        #     source_type="video",
+        #     source_name=source_name,
+        #     face_records=database_face_records,
+        # )
+        session_id = await _persist_analysis(
             db=db,
             source_type="video",
             source_name=source_name,
             face_records=database_face_records,
+            media=MediaPayload(
+                kind="video",
+                filename=source_name,
+                source_path=temp_path,   # file tạm được chuyển vào kho, không bị xóa
+                duration_seconds=metadata["duration"],
+            ),
         )
 
         # Chỉ giữ khuôn mặt xuất hiện đủ nhiều frame -> loại mặt ảo.
@@ -396,6 +445,7 @@ async def analyze_video_service(
         ]
 
         result = {
+            "sessionId": str(session_id),
             "duration": metadata["duration"],
             "totalFrames": metadata["total_frames"],
             "processedFrames": processed_frames,
@@ -453,3 +503,53 @@ async def analyze_webcam_service(
             for face in faces
         ],
     }
+MAX_WEBCAM_VIDEO_BYTES = 500 * 1024 * 1024
+ALLOWED_WEBCAM_TYPES = {"video/webm", "video/mp4"}
+
+
+async def save_webcam_session_service(
+    video: UploadFile,
+    payload: WebcamSessionPayload,
+    db: AsyncSession,
+) -> str:
+    """Lưu một phiên webcam: video do trình duyệt ghi + timeline đã phân tích realtime."""
+    content_type = (video.content_type or "").split(";")[0].strip().lower()
+    if content_type not in ALLOWED_WEBCAM_TYPES:
+        raise InvalidInputException("Video webcam phải ở định dạng WebM hoặc MP4.")
+
+    temp_path = await save_temporary_file(video)
+    try:
+        if Path(temp_path).stat().st_size > MAX_WEBCAM_VIDEO_BYTES:
+            raise InvalidInputException("Video webcam vượt quá 500MB.")
+
+        face_records: list[dict[str, Any]] = []
+        for index, sample in enumerate(payload.samples):
+            for face_index, face in enumerate(sample.faces):
+                face_records.append(
+                    {
+                        "track_id": face.track_id if face.track_id is not None else face_index,
+                        "frame_index": index,
+                        "dominant_emotion": face.dominant_emotion,
+                        "confidence": face.confidence,
+                        "emotion_scores": face.emotion,
+                        "bbox": _bbox_to_dict(face.bbox),
+                        "timestamp": sample.time,
+                    }
+                )
+
+        session_id = await _persist_analysis(
+            db=db,
+            source_type="webcam",
+            source_name=payload.name or "Webcam",
+            face_records=face_records,
+            media=MediaPayload(
+                kind="video",
+                filename="webcam.webm" if content_type == "video/webm" else "webcam.mp4",
+                source_path=temp_path,
+                duration_seconds=payload.duration,
+            ),
+        )
+        return str(session_id)
+
+    finally:
+        delete_file(temp_path)

@@ -14,7 +14,7 @@ async def get_history_controller(
     db: AsyncSession,
     source_type: str,
 ):
-    if source_type not in {"all", "image", "video"}:
+    if source_type not in {"all", "image", "video", "webcam"}:
         raise HTTPException(status_code=400, detail="Loại lịch sử không hợp lệ")
     return await get_history_service(db=db, source_type=source_type)
 

@@ -7,6 +7,8 @@ from sqlalchemy import (
     DateTime,
     String,
     Uuid,
+    Integer,
+    Float,
     func,
 )
 
@@ -65,7 +67,34 @@ class AnalysisSession(Base):
         String(255),
         nullable=False,
     )
+        # =====================================================
+    # MEDIA METADATA
+    # =====================================================
 
+    media_path: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    thumbnail_path: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    media_width: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    media_height: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    duration_seconds: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
     # =====================================================
     # STATUS
     #

@@ -8,6 +8,7 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
+    Form,
     UploadFile,
 )
 
@@ -17,6 +18,7 @@ from src.controller.emotion_controller import (
     analyze_image_controller,
     analyze_video_controller,
     analyze_webcam_controller,
+    save_webcam_session_controller,
 )
 from src.controller.history_controller import (
     delete_history_controller,
@@ -33,6 +35,10 @@ from src.schemas.analysis_schema import (
 
 router = APIRouter()
 
+
+# =========================================================
+# HISTORY
+# =========================================================
 
 @router.get("/history")
 async def get_history(
@@ -60,11 +66,6 @@ async def delete_history(
 
 # =========================================================
 # IMAGE
-#
-# Route chỉ:
-# - nhận request
-# - nhận DB session
-# - gọi Controller
 # =========================================================
 
 @router.post(
@@ -76,9 +77,7 @@ async def analyze_image(
         ...,
         description="Ảnh tĩnh JPG/PNG/WEBP",
     ),
-    db: AsyncSession = Depends(
-        get_session
-    ),
+    db: AsyncSession = Depends(get_session),
 ):
     return await analyze_image_controller(
         file=file,
@@ -88,9 +87,6 @@ async def analyze_image(
 
 # =========================================================
 # VIDEO
-#
-# Video có lưu Repository / PostgreSQL
-# nên cần db.
 # =========================================================
 
 @router.post("/video")
@@ -99,9 +95,7 @@ async def analyze_video(
         ...,
         description="Video cần phân tích",
     ),
-    db: AsyncSession = Depends(
-        get_session
-    ),
+    db: AsyncSession = Depends(get_session),
 ):
     return await analyze_video_controller(
         file=file,
@@ -112,8 +106,8 @@ async def analyze_video(
 # =========================================================
 # WEBCAM
 #
-# Tạm thời webcam chưa lưu DB,
-# nên không cần AsyncSession.
+# /webcam         : phân tích 1 frame realtime, không lưu DB
+# /webcam/session : lưu cả phiên (video ghi từ trình duyệt + timeline)
 # =========================================================
 
 @router.post("/webcam")
@@ -125,4 +119,23 @@ async def analyze_webcam(
 ):
     return await analyze_webcam_controller(
         file=file,
+    )
+
+
+@router.post("/webcam/session")
+async def save_webcam_session(
+    video: UploadFile = File(
+        ...,
+        description="Video webcam (WebM/MP4) do trình duyệt ghi",
+    ),
+    meta: str = Form(
+        ...,
+        description="JSON: name, duration, samples",
+    ),
+    db: AsyncSession = Depends(get_session),
+):
+    return await save_webcam_session_controller(
+        video=video,
+        meta=meta,
+        db=db,
     )
