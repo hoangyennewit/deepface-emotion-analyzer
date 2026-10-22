@@ -7,7 +7,7 @@ const navItems = [
   { path: '/image-analysis', label: 'Phân tích ảnh', icon: '🖼️' },
   { path: '/video-analysis', label: 'Phân tích video', icon: '🎥' },
   { path: '/webcam-analysis', label: 'Phân tích WebCam', icon: '📹' },
-  { path: '/history', label: 'Lịch sử', icon: '🕒' },
+  { path: '/history', label: 'Thống kê', icon: '📊' },
   { path: '/settings', label: 'Cài đặt', icon: '⚙️' },
 ];
 
