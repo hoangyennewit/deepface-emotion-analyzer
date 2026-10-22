@@ -10,6 +10,7 @@ import { WebcamAnalysisPage } from '../pages/WebcamAnalysisPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
+import { Auth } from '../pages/Auth';
 import { HistoryPage } from "../pages/HistoryPage";
 import { HistoryDetailPage } from "../pages/HistoryDetailPage";
 
@@ -17,6 +18,7 @@ function AppRoutes() {
   const routes = [
     { path: '/login', element: <LoginPage /> },
     { path: '/register', element: <RegisterPage /> },
+    { path: '/auth', element: <Auth /> },
     {
       path: '/',
       element: <AppLayout />,
@@ -28,6 +30,7 @@ function AppRoutes() {
         { path: 'history', element: <HistoryPage /> },
         { path: 'history/:id', element: <HistoryDetailPage /> },
         { path: 'settings', element: <SettingsPage /> },
+   
       ],
     },
   ];
