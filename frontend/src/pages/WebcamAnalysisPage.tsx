@@ -8,7 +8,6 @@ import {
 } from '../services/api';
 import { analyzeWebcamFrameLive, ApiError } from '../services/historyApi';
 import { toSampleFaces, useWebcamRecorder } from '../hooks/useWebcamRecorder';
-import { ChatbotWidget } from '../components/ChatbotWidget';
 const EMOTION_COLORS: Record<string, string> = {
   happy: '#22C55E',
   neutral: '#3B82F6',
@@ -767,7 +766,6 @@ export const WebcamAnalysisPage: React.FC = () => {
           </div>
         </div>
       )}
-      <ChatbotWidget />
     </div>
   );
 };

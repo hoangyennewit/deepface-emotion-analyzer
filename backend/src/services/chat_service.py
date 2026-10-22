@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 ChatMode = Literal["live", "video", "dashboard"]
 MAX_MESSAGE_LENGTH = 2000
 MAX_VIDEO_FACE_SAMPLES = 20
-MAX_VIDEO_TIMELINE_SAMPLES = 12
+MAX_VIDEO_TIMELINE_SAMPLES = 30
 
 # 1. Khai báo khuôn mẫu dữ liệu
 # --- 1. PYDANTIC MODELS & HELPERS ---
@@ -70,7 +70,8 @@ class TimelineSample(BaseModel):
         default=None, validation_alias=AliasChoices('frame_index', 'frameIndex')
     )
     dominant_emotion: Optional[str] = Field(
-        default=None, validation_alias=AliasChoices('dominant_emotion', 'dominantEmotion')
+        default=None,
+        validation_alias=AliasChoices('dominant_emotion', 'dominantEmotion'),
     )
     emotions: Optional[dict[str, float]] = None
 
@@ -103,6 +104,13 @@ def _sample_evenly(items: list[Any], limit: int) -> list[Any]:
         return [items[-1]]
     indices = [round(i * (len(items) - 1) / (limit - 1)) for i in range(limit)]
     return [items[index] for index in indices]
+
+
+def _dominant_emotion(emotions: dict[str, float] | None) -> str | None:
+    if not emotions:
+        return None
+    return max(emotions, key=emotions.get)
+
 
 def _build_video_context(analysis_data: dict[str, Any]) -> dict[str, Any]:
     """Rút gọn kết quả Video DeepFace bằng Pydantic."""
@@ -141,6 +149,10 @@ def _build_video_context(analysis_data: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(item, dict): continue
             try:
                 clean_item = TimelineSample(**item).model_dump(exclude_none=True)
+                if "dominant_emotion" not in clean_item:
+                    dominant_emotion = _dominant_emotion(clean_item.get("emotions"))
+                    if dominant_emotion is not None:
+                        clean_item["dominant_emotion"] = dominant_emotion
                 if clean_item: 
                     timeline_samples.append(clean_item)
             except ValidationError:
@@ -223,10 +235,8 @@ async def ask_emotion_chatbot(
         )
 
     if mode == "live":
-        if analysis_data is None:
-            raise ValueError("Thiếu analysis_data cho Webcam live")
         context = build_live_context(
-            _normalize_live_data(analysis_data),
+            _normalize_live_data(analysis_data or {}),
             window_seconds=window_seconds,
         )
         ai_result = await generate_with_fallback(
@@ -288,5 +298,4 @@ async def ask_emotion_chatbot(
         "input_type": ai_result.get("input_type", "text"),
         "scope": context_scope,
     }
-
 

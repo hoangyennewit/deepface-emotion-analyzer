@@ -16,7 +16,7 @@ from src.repositories.analysis_repository import (
 
 SOURCES = frozenset({"image", "video", "webcam", "all"})
 MAX_DASHBOARD_SESSIONS = 20
-MAX_TIMELINE_SAMPLES = 12
+MAX_TIMELINE_SAMPLES = 30
 
 
 def _number(value: Any) -> float | None:
@@ -51,6 +51,12 @@ def _sample_evenly(items: list[dict[str, Any]], limit: int) -> list[dict[str, An
         return [items[-1]]
     indices = [round(i * (len(items) - 1) / (limit - 1)) for i in range(limit)]
     return [items[index] for index in indices]
+
+
+def _dominant_emotion(emotions: dict[str, float]) -> str | None:
+    if not emotions:
+        return None
+    return max(emotions, key=emotions.get)
 
 
 def summarize_faces(faces: Iterable[Any]) -> dict[str, Any]:
@@ -120,7 +126,7 @@ def build_live_context(
     analysis_data: dict[str, Any],
     *,
     window_seconds: int = 30,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """Chuẩn hóa thống kê Webcam live được truyền từ pipeline hiện tại.
 
     ``analysis_data`` phải là dữ liệu thật do DeepFace/pipeline cung cấp;
@@ -148,9 +154,6 @@ def build_live_context(
         if numeric is not None and numeric >= 0 and emotion_name:
             summary[emotion_name] = round(numeric, 3)
 
-    if not summary:
-        raise ValueError("Chưa có thống kê DeepFace cho Webcam")
-
     raw_timeline = analysis_data.get("timeline") or []
     timeline_samples: list[dict[str, Any]] = []
     if isinstance(raw_timeline, list):
@@ -171,6 +174,11 @@ def build_live_context(
                 }
                 if clean_emotions:
                     sample["emotions"] = clean_emotions
+                    sample["dominant_emotion"] = (
+                        str(item.get("dominant_emotion") or item.get("dominantEmotion"))
+                        if item.get("dominant_emotion") or item.get("dominantEmotion")
+                        else _dominant_emotion(clean_emotions)
+                    )
             if sample:
                 timeline_samples.append(sample)
 
@@ -184,6 +192,9 @@ def build_live_context(
         "summary_unit", analysis_data.get("summaryUnit", "unknown")
     )
     summary_unit = str(raw_unit or "unknown").strip().lower()
+
+    if not summary and not timeline_samples and processed_frames is None and total_faces is None:
+        return None
 
     # Chỉ tính phần trăm khi nguồn dữ liệu xác nhận emotion_summary là số đếm.
     # Không dùng processed_frames hoặc total_faces làm mẫu số thay thế.
