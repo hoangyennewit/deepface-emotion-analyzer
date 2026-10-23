@@ -22,24 +22,36 @@ Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **hình ản
 
 ### 1. Backend
 
-Tạo và kích hoạt virtual environment tại thư mục gốc `Project`:
+> **Yêu cầu phiên bản Python:** dùng **Python 3.12** (khuyến nghị).
+> TensorFlow 2.21 hiện chưa có bản cài cho Python 3.14/3.15, còn `numpy==2.2.6`
+> không có wheel cho 3.15, nên pip sẽ cố biên dịch từ mã nguồn và báo lỗi
+> `metadata-generation-failed` / `Unknown compiler(s)`. Nếu máy chưa có 3.12,
+> cài bằng: `winget install -e --id Python.Python.3.12` (đóng và mở lại
+> terminal sau khi cài).
+
+Tạo và kích hoạt virtual environment tại thư mục gốc `Project` (Windows dùng
+`py -3.12` để chắc chắn đúng phiên bản):
 
 ```powershell
 # Windows (PowerShell):
-python -m venv deepface-env
+py -3.12 -m venv deepface-env
 .\deepface-env\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r backend\requirements.txt
 
 # Windows (Command Prompt):
+py -3.12 -m venv deepface-env
 deepface-env\Scripts\activate.bat
 python -m pip install --upgrade pip
 pip install -r backend\requirements.txt
 ```
 
+Nếu PowerShell chặn script kích hoạt, chạy trước:
+`Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process`.
+
 ```bash
 # macOS / Linux:
-python3 -m venv deepface-env
+python3.12 -m venv deepface-env
 source deepface-env/bin/activate
 python -m pip install --upgrade pip
 pip install -r backend/requirements.txt
@@ -54,6 +66,8 @@ pip install -r backend/requirements.txt
 
 Cấu hình PostgreSQL và file môi trường backend:
 - Cài đặt, khởi động PostgreSQL và tạo database `emotion_analysis_db`.
+  Nếu chưa có: `winget install -e --id PostgreSQL.PostgreSQL.17`, sau đó mở
+  pgAdmin (hoặc `psql -U postgres`) và chạy `CREATE DATABASE emotion_analysis_db;`.
 - Sao chép file mẫu: `copy backend\.env.example backend\.env` (hoặc `cp backend/.env.example backend/.env` trên Linux/macOS).
 - Cập nhật `DATABASE_URL` trong `backend/.env` theo định dạng `postgresql+asyncpg://<username>:<password>@localhost:5432/emotion_analysis_db`, thay placeholder bằng thông tin PostgreSQL của bạn.
 - Backend tự tạo các bảng ORM khi khởi động; database cần được tạo trước.
@@ -61,6 +75,9 @@ Cấu hình PostgreSQL và file môi trường backend:
 ---
 
 ### 2. Frontend
+
+Cần **Node.js LTS** (đã kiểm tra với Node 24):
+`winget install -e --id OpenJS.NodeJS.LTS` (mở lại terminal sau khi cài).
 
 Di chuyển vào thư mục frontend và cài đặt dependencies:
 
