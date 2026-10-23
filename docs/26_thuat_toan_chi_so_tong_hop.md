@@ -91,16 +91,21 @@ emotion_summary(e) = tổng điểm e / tổng điểm mọi cảm xúc × 100
 
 ## 4. Webcam
 
-Webcam hiện sử dụng nhánh tương thích `analyze_webcam_image()`:
+Webcam dùng nhánh riêng `backend/src/services/webcam_analyzer.py`
+(MediaPipe FaceLandmarker), **không dùng DeepFace** để tránh độ trễ 0,5–1,5
+giây mỗi frame:
 
-- detector chính là OpenCV;
-- nếu không có kết quả thì thử RetinaFace;
-- mỗi request chứa một frame JPEG;
-- DeepFace phân tích trực tiếp frame với `actions=["emotion"]`.
+- mỗi request chứa một frame JPEG từ trình duyệt;
+- frame được thu nhỏ còn 640 px, chạy FaceLandmarker ở chế độ VIDEO;
+- trả về 7 cảm xúc, bbox, `track_id`, kèm trạng thái học tập
+  (`focused`/`distracted`/`tired`/`confused`) và các chỉ số
+  `attention`, `fatigue`;
+- frontend gửi frame cách nhau 400 ms và bỏ nhịp nếu request trước chưa xong.
 
-Đây là thuật toán cũ, khác với multi-detector của ảnh tĩnh và detector nhanh
-của video. Frontend gửi tuần tự từng frame, không gửi request mới khi request
-trước chưa hoàn tất để tránh xếp hàng frame cũ.
+Chi tiết thuật toán, công thức và tham số xem
+`27_webcam_realtime_mediapipe.md`. Nhánh DeepFace cũ
+(`analyze_webcam_image()`) vẫn được giữ làm dự phòng khi máy chưa cài
+`mediapipe`.
 
 ## 5. Tham số quan trọng
 

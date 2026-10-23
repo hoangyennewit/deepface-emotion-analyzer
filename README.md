@@ -1,8 +1,8 @@
 # 🌟 Face Emotion Analyzer
 
-Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **hình ảnh tĩnh**, **video** và **webcam trực tiếp**. Backend cung cấp API FastAPI, lưu lịch sử phân tích trong PostgreSQL và xử lý nhận diện bằng DeepFace/OpenCV.
+Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **hình ảnh tĩnh**, **video** và **webcam trực tiếp**. Backend cung cấp API FastAPI, lưu lịch sử phân tích trong PostgreSQL; ảnh/video xử lý bằng DeepFace, webcam xử lý realtime bằng MediaPipe.
 
-- **Backend:** FastAPI, DeepFace, OpenCV, SQLAlchemy Async, asyncpg, Pydantic Settings.
+- **Backend:** FastAPI, DeepFace, MediaPipe, OpenCV, SQLAlchemy Async, asyncpg, Pydantic Settings.
 - **Frontend:** React, Vite, TypeScript, Tailwind CSS, React Router.
 
 ---
@@ -22,37 +22,52 @@ Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **hình ản
 
 ### 1. Backend
 
-Tạo và kích hoạt virtual environment tại thư mục gốc `Project`:
+> **Yêu cầu phiên bản Python:** dùng **Python 3.12** (khuyến nghị).
+> TensorFlow 2.21 hiện chưa có bản cài cho Python 3.14/3.15, còn `numpy==2.2.6`
+> không có wheel cho 3.15, nên pip sẽ cố biên dịch từ mã nguồn và báo lỗi
+> `metadata-generation-failed` / `Unknown compiler(s)`. Nếu máy chưa có 3.12,
+> cài bằng: `winget install -e --id Python.Python.3.12` (đóng và mở lại
+> terminal sau khi cài).
+
+Tạo và kích hoạt virtual environment tại thư mục gốc `Project` (Windows dùng
+`py -3.12` để chắc chắn đúng phiên bản):
 
 ```powershell
 # Windows (PowerShell):
-python -m venv deepface-env
+py -3.12 -m venv deepface-env
 .\deepface-env\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r backend\requirements.txt
 
 # Windows (Command Prompt):
+py -3.12 -m venv deepface-env
 deepface-env\Scripts\activate.bat
 python -m pip install --upgrade pip
 pip install -r backend\requirements.txt
 ```
 
+Nếu PowerShell chặn script kích hoạt, chạy trước:
+`Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process`.
+
 ```bash
 # macOS / Linux:
-python3 -m venv deepface-env
+python3.12 -m venv deepface-env
 source deepface-env/bin/activate
 python -m pip install --upgrade pip
 pip install -r backend/requirements.txt
 ```
 
 **Mục đích một số thư viện chính:**
-- `deepface`: Trích xuất khuôn mặt và dự đoán xác suất các nhóm cảm xúc.
+- `deepface`: Trích xuất khuôn mặt và dự đoán xác suất các nhóm cảm xúc (ảnh/video).
+- `mediapipe`: Phân tích khuôn mặt realtime cho webcam (landmark, blendshape, góc đầu).
 - `python-multipart`: Đọc và xử lý luồng upload file multipart/form-data (ảnh, video).
 - `sqlalchemy[asyncio]` & `asyncpg`: Thao tác cơ sở dữ liệu bất đồng bộ với PostgreSQL.
 - `opencv-python`: Đọc và xử lý ảnh/video.
 
 Cấu hình PostgreSQL và file môi trường backend:
 - Cài đặt, khởi động PostgreSQL và tạo database `emotion_analysis_db`.
+  Nếu chưa có: `winget install -e --id PostgreSQL.PostgreSQL.17`, sau đó mở
+  pgAdmin (hoặc `psql -U postgres`) và chạy `CREATE DATABASE emotion_analysis_db;`.
 - Sao chép file mẫu: `copy backend\.env.example backend\.env` (hoặc `cp backend/.env.example backend/.env` trên Linux/macOS).
 - Cập nhật `DATABASE_URL` trong `backend/.env` theo định dạng `postgresql+asyncpg://<username>:<password>@localhost:5432/emotion_analysis_db`, thay placeholder bằng thông tin PostgreSQL của bạn.
 - Backend tự tạo các bảng ORM khi khởi động; database cần được tạo trước.
@@ -60,6 +75,9 @@ Cấu hình PostgreSQL và file môi trường backend:
 ---
 
 ### 2. Frontend
+
+Cần **Node.js LTS** (đã kiểm tra với Node 24):
+`winget install -e --id OpenJS.NodeJS.LTS` (mở lại terminal sau khi cài).
 
 Di chuyển vào thư mục frontend và cài đặt dependencies:
 
@@ -135,7 +153,7 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 | `GET` | `/` | Không | Thông tin chào mừng API |
 | `GET` | `/health/` | Không | Kiểm tra trạng thái máy chủ backend |
 | `POST` | `/emotion/image` | `multipart/form-data` (`file`) | Phân tích ảnh và trả về cảm xúc/khuôn mặt nhận diện được |
-| `POST` | `/emotion/webcam` | `multipart/form-data` (`file`) | Phân tích một frame ảnh từ webcam |
+| `POST` | `/emotion/webcam` | `multipart/form-data` (`file`) | Phân tích một frame webcam: cảm xúc + trạng thái (tập trung/mất tập trung/mệt mỏi/bối rối) |
 | `POST` | `/emotion/video` | `multipart/form-data` (`file`) | Phân tích video đồng bộ; request chờ đến khi xử lý xong |
 | `POST` | `/chat/emotion` | JSON: `mode`, `message` và dữ liệu tùy chọn theo chế độ | Hỏi AI về biểu cảm ở chế độ live, video hoặc dashboard |
 | `GET` | `/emotion/history?type=all` | Query `type`: `all`, `image` hoặc `video` | Danh sách lịch sử phân tích |
@@ -165,7 +183,18 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 - API hiện tại không cung cấp endpoint background, `job_id` hoặc endpoint polling trạng thái video.
 
 ### 3. Webcam và lịch sử
-- `/emotion/webcam` nhận một frame ảnh dưới dạng multipart field `file`.
+- `/emotion/webcam` nhận một frame ảnh dưới dạng multipart field `file`, xử lý bằng
+  MediaPipe FaceLandmarker (`backend/src/services/webcam_analyzer.py`).
+- Response gồm 7 cảm xúc, bbox, `track_id` và trạng thái học tập
+  (`focused`/`distracted`/`tired`/`confused`) kèm `attention`, `fatigue`.
+  Frontend gửi frame cách nhau 400 ms.
+- Model MediaPipe (~3,7 MB) tự tải về `models/face_landmarker.task` ở lần chạy
+  đầu. Có thể tải trước bằng:
+  ```bash
+  cd backend
+  python -m src.services.webcam_analyzer
+  ```
+  Chi tiết thuật toán: [`docs/27_webcam_realtime_mediapipe.md`](docs/27_webcam_realtime_mediapipe.md).
 - Lịch sử ảnh/video được truy vấn, xem chi tiết và xóa qua `/emotion/history`; `type` nhận `all`, `image` hoặc `video`.
 - Backend kết nối PostgreSQL bất đồng bộ bằng SQLAlchemy và `asyncpg`.
 

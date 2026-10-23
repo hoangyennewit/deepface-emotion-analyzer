@@ -80,3 +80,6 @@ outputs/*
 *.swp
 *.swo
 Thumbs.db
+
+# Model MediaPipe cho webcam (tự tải về, không commit)
+models/

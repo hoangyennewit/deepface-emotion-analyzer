@@ -119,12 +119,28 @@ export interface WebcamFrameFace {
   confidence: number; // 0..100
   emotion: Record<string, number>; // 7 điểm, 0..100
   bbox: number[] | null; // [x, y, w, h] theo pixel của frame gửi lên
+  // Trạng thái giám sát lớp học (MediaPipe); có thể vắng nếu backend
+  // đang dùng nhánh dự phòng DeepFace.
+  state?: "focused" | "distracted" | "tired" | "confused" | string;
+  state_label?: string;
+  attention?: number; // 0..100
+  fatigue?: number; // 0..100
+  is_yawning?: boolean;
+}
+
+export interface WebcamFrameSummary {
+  states: Record<string, number>;
+  attention: number;
+  fatigue: number;
+  alert: boolean;
 }
 
 export interface WebcamFrameResult {
   success: boolean;
   total_faces: number;
   faces: WebcamFrameFace[];
+  engine?: "mediapipe" | "deepface" | string;
+  summary?: WebcamFrameSummary;
 }
 
 /** Frame không có mặt thì server trả 400 (ApiError.status === 400) */
