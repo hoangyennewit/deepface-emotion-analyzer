@@ -14,9 +14,21 @@ export const RegisterPage = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const hasMinimumLength = [...password].length >= 8;
+  const hasLetter = /\p{L}/u.test(password);
+  const hasNumber = /\p{N}/u.test(password);
+  const hasSpecialCharacter = /[^\p{L}\p{N}\s]/u.test(password);
+  const passwordIsStrong =
+    hasMinimumLength && hasLetter && hasNumber && hasSpecialCharacter;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!passwordIsStrong) {
+      setError(
+        "Mật khẩu cần ít nhất 8 ký tự, gồm chữ cái, chữ số và ký tự đặc biệt."
+      );
+      return;
+    }
     if (password !== confirmPassword) {
       setError("Mật khẩu xác nhận không khớp.");
       return;
@@ -118,10 +130,13 @@ export const RegisterPage = () => {
                     <input
                       className="w-full rounded-lg border border-[#CBD5E1] bg-white py-3 pl-10 pr-11 text-sm text-[#0F254A] outline-none transition placeholder:text-[#94A3B8] focus:border-[#2563EB] focus:ring-4 focus:ring-[#DBEAFE]"
                       type={showPassword ? "text" : "password"}
-                      placeholder="Tối thiểu 8 ký tự"
+                      placeholder="Tạo mật khẩu mạnh"
                       minLength={8}
                       value={password}
-                      onChange={(event) => setPassword(event.target.value)}
+                      onChange={(event) => {
+                        setPassword(event.target.value);
+                        setError("");
+                      }}
                       required
                     />
                     <button
@@ -132,6 +147,20 @@ export const RegisterPage = () => {
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
+                  </span>
+                  <span className="mt-2 block space-y-1 text-xs font-normal text-[#64748B]">
+                    <span className="block">
+                      {hasMinimumLength ? "✓" : "•"} Ít nhất 8 ký tự
+                    </span>
+                    <span className="block">
+                      {hasLetter ? "✓" : "•"} Có chữ cái
+                    </span>
+                    <span className="block">
+                      {hasNumber ? "✓" : "•"} Có chữ số
+                    </span>
+                    <span className="block">
+                      {hasSpecialCharacter ? "✓" : "•"} Có ký tự đặc biệt
+                    </span>
                   </span>
                 </label>
 

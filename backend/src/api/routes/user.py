@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.controller.auth_controller import ALGORITHM, SECRET_KEY
@@ -11,6 +11,7 @@ from src.controller.auth_controller import pwd_context
 from src.db.session import get_session
 from src.models.user import User
 from src.repositories.user_repository import UserRepository
+from src.schemas.auth import validate_password_strength
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -24,6 +25,11 @@ class UpdateProfileRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def check_password_strength(cls, password: str) -> str:
+        return validate_password_strength(password)
 
 
 def _profile_response(user: User) -> dict[str, str]:
@@ -95,11 +101,6 @@ async def change_password(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Mật khẩu hiện tại không chính xác.",
-        )
-    if len(req.new_password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mật khẩu mới phải có ít nhất 6 ký tự.",
         )
     user.hashed_password = pwd_context.hash(req.new_password)
     await UserRepository(db).save(user)
