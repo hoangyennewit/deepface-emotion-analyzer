@@ -1,7 +1,8 @@
-import { Eye, EyeOff, LockKeyhole, Mail, ScanFace } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Mail, ScanFace, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { login, saveToken } from "../api/auth";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -9,9 +10,22 @@ export const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    navigate("/");
+    setLoading(true);
+    setError("");
+    try {
+      const response = await login(email, password);
+      saveToken(response.access_token);
+      navigate("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Lỗi không xác định");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -58,6 +72,13 @@ export const LoginPage = () => {
               <p className="mt-3 text-sm leading-6 text-[#64748B]">
                 Tiếp tục phiên phân tích cảm xúc của bạn.
               </p>
+
+              {error && (
+                <div className="mb-4 rounded-lg border border-[#FCA5A5] bg-red-50 px-4 py-3 text-sm text-[#991B1B] flex items-center gap-2">
+                  <AlertCircle size={16} className="shrink-0" />
+                  {error}
+                </div>
+              )}
 
               <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
                 <label className="block text-sm font-semibold text-[#334155]">
@@ -109,10 +130,11 @@ export const LoginPage = () => {
                 </div>
 
                 <button
-                  className="w-full rounded-lg bg-[#2563EB] px-5 py-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(37,99,235,0.22)] transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-4 focus:ring-[#DBEAFE]"
+                  className="w-full rounded-lg bg-[#2563EB] px-5 py-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(37,99,235,0.22)] transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-4 focus:ring-[#DBEAFE] disabled:opacity-50"
                   type="submit"
+                  disabled={loading}
                 >
-                  Đăng nhập
+                  {loading ? "Đang đăng nhập..." : "Đăng nhập"}
                 </button>
               </form>
 

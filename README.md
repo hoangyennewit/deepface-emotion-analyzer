@@ -1,183 +1,55 @@
-# 🌟 Face Emotion Analyzer
+# EmotionAI - DeepFace Emotion Analyzer
 
-Dự án nhận diện và phân tích cảm xúc khuôn mặt từ **hình ảnh tĩnh**, **video** và **webcam trực tiếp**. Backend cung cấp API FastAPI, lưu lịch sử phân tích trong PostgreSQL và xử lý nhận diện bằng DeepFace/OpenCV.
+Phân tích cảm xúc khuôn mặt từ ảnh, video và webcam.
 
-- **Backend:** FastAPI, DeepFace, OpenCV, SQLAlchemy Async, asyncpg, Pydantic Settings.
-- **Frontend:** React, Vite, TypeScript, Tailwind CSS, React Router.
+## Cài đặt
 
----
+Chạy file setup theo hệ điều hành:
 
-## 🌐 Địa Chỉ Truy Cập Mặc Định
+- Windows: `setup.bat`
+- Linux/macOS: `bash setup.sh`
 
-| Dịch vụ | URL | Mô tả |
-| :--- | :--- | :--- |
-| **Frontend Web** | http://localhost:5173 | Giao diện phân tích và theo dõi |
-| **Backend API Root** | http://127.0.0.1:8000 | Root service |
-| **Swagger UI Docs** | http://127.0.0.1:8000/docs | Tài liệu kiểm thử API tương tác |
-| **Health Check** | http://127.0.0.1:8000/health/ | Kiểm tra trạng thái hoạt động backend |
-
----
-
-## 📦 I. CÀI ĐẶT MÔI TRƯỜNG & THƯ VIỆN LẦN ĐẦU
-
-### 1. Backend
-
-Tạo và kích hoạt virtual environment tại thư mục gốc `Project`:
-
-```powershell
-# Windows (PowerShell):
-python -m venv deepface-env
-.\deepface-env\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r backend\requirements.txt
-
-# Windows (Command Prompt):
-deepface-env\Scripts\activate.bat
-python -m pip install --upgrade pip
-pip install -r backend\requirements.txt
-```
+Hoặc làm thủ công:
 
 ```bash
-# macOS / Linux:
-python3 -m venv deepface-env
-source deepface-env/bin/activate
-python -m pip install --upgrade pip
-pip install -r backend/requirements.txt
-```
+# Backend
+cd backend
+pip install -r requirements.txt
+cp .env.example .env   # sửa DATABASE_URL và SECRET_KEY nếu cần
 
-**Mục đích một số thư viện chính:**
-- `deepface`: Trích xuất khuôn mặt và dự đoán xác suất các nhóm cảm xúc.
-- `python-multipart`: Đọc và xử lý luồng upload file multipart/form-data (ảnh, video).
-- `sqlalchemy[asyncio]` & `asyncpg`: Thao tác cơ sở dữ liệu bất đồng bộ với PostgreSQL.
-- `opencv-python`: Đọc và xử lý ảnh/video.
-
-Cấu hình PostgreSQL và file môi trường backend:
-- Cài đặt, khởi động PostgreSQL và tạo database `emotion_analysis_db`.
-- Sao chép file mẫu: `copy backend\.env.example backend\.env` (hoặc `cp backend/.env.example backend/.env` trên Linux/macOS).
-- Cập nhật `DATABASE_URL` trong `backend/.env` theo định dạng `postgresql+asyncpg://<username>:<password>@localhost:5432/emotion_analysis_db`, thay placeholder bằng thông tin PostgreSQL của bạn.
-- Backend tự tạo các bảng ORM khi khởi động; database cần được tạo trước.
-
----
-
-### 2. Frontend
-
-Di chuyển vào thư mục frontend và cài đặt dependencies:
-
-```bash
-cd frontend
+# Frontend
+cd ../frontend
 npm install
-npm install react-router-dom
+cp .env.example .env.local
 ```
 
-Cấu hình file môi trường frontend:
-- Sao chép file mẫu: `copy .env.example .env` (hoặc `cp .env.example .env`).
-- Thiết lập biến URL trỏ đến backend:
-  ```env
-  VITE_API_URL=http://localhost:8000
-  ```
+## Chạy
 
----
+```bash
+# Tạo database (SQLite - dùng được ngay, chỉ phù hợp dev)
+cd backend
+python -c "import asyncio; from src.db.base import Base; from src.db.session import engine; async def init(): async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all); asyncio.run(init())"
 
-## 🚀 II. HƯỚNG DẪN KHỞI CHẠY HỆ THỐNG
+# Backendnuvicorn src.main:app --reload --port 8000
 
-Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Project`:
+# Frontend (cửa sổ khác)
+cd frontend
+npm run dev
+```
 
-### 🔹 Cửa sổ 1: Chạy Backend (FastAPI)
+## Đăng nhập/đăng ký
 
-1. Mở Terminal tại thư mục `Project`.
-2. Kích hoạt môi trường ảo:
-   - **PowerShell (VS Code):**
-     ```powershell
-     .\deepface-env\Scripts\Activate.ps1
-     ```
-     *(Nếu gặp lỗi script execution bị chặn, chạy lệnh: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process`)*
-   - **Command Prompt (CMD):**
-     ```cmd
-     deepface-env\Scripts\activate.bat
-     ```
-   - **macOS / Linux:**
-     ```bash
-     source deepface-env/bin/activate
-     ```
-3. Khởi chạy Uvicorn server:
-   ```bash
-   cd backend
-   uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
-   ```
-4. Đợi thông báo `Uvicorn running on http://127.0.0.1:8000`. Giữ nguyên cửa sổ này.
+- `POST /auth/register` — tạo tài khoản (JSON: full_name, email, password)
+- `POST /auth/login` — đăng nhập (form: username=email, password)
 
----
+Frontend: mở `http://localhost:5173/register` hoặc `/login`.
 
-### 🔹 Cửa sổ 2: Chạy Frontend (React + Vite)
+## Lưu ý
 
-1. Mở cửa sổ Terminal thứ 2 tại thư mục `Project`.
-2. Di chuyển vào thư mục frontend và chạy dev server:
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-3. Đợi thông báo `Local: http://localhost:5173/`. Truy cập trình duyệt theo địa chỉ trên.
+- File `.env` và `.env.local` đã trong `.gitignore`, không bị commit.
+- Mặc định dùng PostgreSQL. Để dùng SQLite cho nhanh, sửa `DATABASE_URL=sqlite+aiosqlite:///./emotion_analysis.db` trong `backend/.env`.
+- Nếu lỗi bcrypt/passlib: `pip install bcrypt==4.0.1`
+- Nếu thiếu greenlet: `pip install greenlet`
+- Nếu thiếu email_validator: `pip install email-validator`
 
----
-
-## 🧭 III. KIẾN TRÚC TRANG FRONTEND
-
-- `/webcam`: Phân tích biểu cảm webcam trực tiếp theo thời gian thực (đọc từng khung hình canvas định dạng JPEG đẩy lên server).
-- `/video`: Tải lên và phân tích video đồng bộ.
-- `/history`: Lịch sử các phiên phân tích kèm chi tiết độ tin cậy và phân bổ cảm xúc.
-
----
-
-## 📡 IV. TỔNG HỢP DANH SÁCH REST API
-
-| Phương thức | Endpoint | Định dạng Body / Tham số | Mô tả chức năng |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/` | Không | Thông tin chào mừng API |
-| `GET` | `/health/` | Không | Kiểm tra trạng thái máy chủ backend |
-| `POST` | `/emotion/image` | `multipart/form-data` (`file`) | Phân tích ảnh và trả về cảm xúc/khuôn mặt nhận diện được |
-| `POST` | `/emotion/webcam` | `multipart/form-data` (`file`) | Phân tích một frame ảnh từ webcam |
-| `POST` | `/emotion/video` | `multipart/form-data` (`file`) | Phân tích video đồng bộ; request chờ đến khi xử lý xong |
-| `POST` | `/chat/emotion` | JSON: `mode`, `message` và dữ liệu tùy chọn theo chế độ | Hỏi AI về biểu cảm ở chế độ live, video hoặc dashboard |
-| `GET` | `/emotion/history?type=all` | Query `type`: `all`, `image` hoặc `video` | Danh sách lịch sử phân tích |
-| `GET` | `/emotion/history/{session_id}` | Path param: UUID `session_id` | Xem chi tiết một bản ghi phân tích |
-| `DELETE` | `/emotion/history/{session_id}` | Path param: UUID `session_id` | Xóa bản ghi lịch sử phân tích |
-| `POST` | `/upload/image` | `multipart/form-data`: `file`, `save_file` (mặc định `false`) | Nhận ảnh; lưu bền vững khi `save_file=true` |
-| `POST` | `/upload/video` | `multipart/form-data`: `file`, `save_file` (mặc định `false`) | Nhận video; lưu bền vững khi `save_file=true` |
-| `GET` | `/user/profile` | Không | Lấy hồ sơ mẫu |
-| `PUT` | `/user/profile` | JSON: `name`, `email`, `avatar` (tùy chọn) | Cập nhật hồ sơ mẫu |
-| `POST` | `/user/change-password` | JSON: `old_password`, `new_password` | Endpoint minh họa đổi mật khẩu |
-| `GET` | `/settings/` | Không | Lấy cài đặt hệ thống |
-| `POST` | `/settings/` | JSON: các trường cài đặt (tùy chọn) | Cập nhật cài đặt hệ thống |
-| `GET` | `/settings/webcam` | Không | Lấy cài đặt webcam |
-| `POST` | `/settings/webcam` | JSON: các trường webcam (tùy chọn) | Cập nhật cài đặt webcam |
-
----
-
-## 💡 V. CHI TIẾT CƠ CHẾ XỬ LÝ
-
-### 1. Phân tích ảnh tĩnh (`/emotion/image`)
-- Tiếp nhận file ảnh qua multipart form field `file`.
-- Chuyển tiếp tới `backend/src/services/image_analyzer.py` xử lý qua hàm `analyze_static_image()`.
-- Trả về `success`, tổng số khuôn mặt, thông tin cảm xúc từng khuôn mặt và lỗi (nếu có).
-
-### 2. Phân tích video (`/emotion/video`)
-- Đây là endpoint xử lý đồng bộ: client chờ server phân tích xong video rồi mới nhận kết quả.
-- API hiện tại không cung cấp endpoint background, `job_id` hoặc endpoint polling trạng thái video.
-
-### 3. Webcam và lịch sử
-- `/emotion/webcam` nhận một frame ảnh dưới dạng multipart field `file`.
-- Lịch sử ảnh/video được truy vấn, xem chi tiết và xóa qua `/emotion/history`; `type` nhận `all`, `image` hoặc `video`.
-- Backend kết nối PostgreSQL bất đồng bộ bằng SQLAlchemy và `asyncpg`.
-
-### 4. Upload file
-- Các endpoint `/upload/image` và `/upload/video` nhận field `file` cùng `save_file`.
-- Khi `save_file=true`, file được lưu dưới `outputs/uploads/images` hoặc `outputs/uploads/videos`; khi `false`, API không lưu ảnh lâu dài và video được ghi vào file tạm.
-- `/chat/emotion` nhận `mode` là `live`, `video` hoặc `dashboard`. Chế độ `live` cần `analysis_data`; `dashboard` có thể nhận `session_id`, `source_type` và `limit`; `video` cần `video_file_id` từ kết quả upload video đã lưu (`save_file=true`), có thể kèm `session_id` để dùng kết quả DeepFace của phiên.
-- Mọi chế độ đều nhận `message`. Chế độ live có thể cấu hình `window_seconds` (1–300). API chỉ nhận mã file video, không nhận đường dẫn hệ thống từ client.
-
-> Các endpoint hồ sơ người dùng và cài đặt hiện lưu dữ liệu mẫu trong bộ nhớ tiến trình, không phải cơ chế xác thực hay lưu trữ bền vững.
-
----
-
-## ⛔ DỪNG ỨNG DỤNG
-- Nhấn `Ctrl + C` tại cả 2 cửa sổ terminal (Backend và Frontend) để tắt toàn bộ dịch vụ.
+Branch `feat/dangnhap` chứa phần đăng nhập/đăng ký.

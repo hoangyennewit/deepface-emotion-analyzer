@@ -3,13 +3,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta, timezone
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 from src.repositories.user_repository import UserRepository
 from src.schemas.auth import UserRegister, Token
 from src.models.user import User
 
-SECRET_KEY = "SECRET_KEY_CHANGE_ME_123"
-ALGORITHM = "HS256"
+class Settings(BaseSettings):
+    SECRET_KEY: str = "SECRET_KEY_CHANGE_ME_123"
+    ALGORITHM: str = "HS256"
+
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).resolve().parents[2] / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+settings = Settings()
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class AuthController:

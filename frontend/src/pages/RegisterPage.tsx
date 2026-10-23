@@ -1,7 +1,8 @@
-import { Eye, EyeOff, LockKeyhole, Mail, ScanFace, UserRound } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Mail, ScanFace, UserRound, AlertCircle, CheckCircle } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { register, login, saveToken } from "../api/auth";
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
@@ -12,15 +13,35 @@ export const RegisterPage = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (password !== confirmPassword) {
       setError("Mật khẩu xác nhận không khớp.");
       return;
     }
     setError("");
-    navigate("/");
+    setSuccess("");
+    setLoading(true);
+    try {
+      await register(name, email, password);
+      setSuccess("Đăng ký thành công! Đang chuyển đến trang đăng nhập...");
+      setTimeout(async () => {
+        try {
+          const response = await login(email, password);
+          saveToken(response.access_token);
+          navigate("/");
+        } catch {
+          navigate("/login");
+        }
+      }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Lỗi không xác định");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -146,13 +167,25 @@ export const RegisterPage = () => {
                   </span>
                 </label>
 
-                {error && <p className="text-sm font-medium text-[#DC2626]">{error}</p>}
+                {error && (
+                <div className="mb-4 rounded-lg border border-[#FCA5A5] bg-red-50 px-4 py-3 text-sm text-[#991B1B] flex items-center gap-2">
+                  <AlertCircle size={16} className="shrink-0" />
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="mb-4 rounded-lg border border-[#86EFAC] bg-green-50 px-4 py-3 text-sm text-[#166534] flex items-center gap-2">
+                  <CheckCircle size={16} className="shrink-0" />
+                  {success}
+                </div>
+              )}
 
                 <button
-                  className="w-full rounded-lg bg-[#2563EB] px-5 py-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(37,99,235,0.22)] transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-4 focus:ring-[#DBEAFE]"
+                  className="w-full rounded-lg bg-[#2563EB] px-5 py-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(37,99,235,0.22)] transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-4 focus:ring-[#DBEAFE] disabled:opacity-50"
                   type="submit"
+                  disabled={loading}
                 >
-                  Tạo tài khoản
+                  {loading ? "Đang tạo tài khoản..." : "Tạo tài khoản"}
                 </button>
               </form>
 
