@@ -17,6 +17,8 @@ from src.services.gemini_service import (
 from src.services.chat_context_service import (
     build_live_context,
     build_dashboard_context,
+    build_time_buckets,
+    summary_insights,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,6 @@ def _is_valid_number(v: Any) -> bool:
 class FaceSample(BaseModel):
     model_config = ConfigDict(extra='ignore')
     
-    # AliasChoices giúp tự động nhận biết cả 'id' lẫn 'track_id'
     id: int | str = Field(validation_alias=AliasChoices('id', 'track_id'))
     dominant_emotion: Optional[str] = Field(
         default=None, 
@@ -154,6 +155,8 @@ def _build_video_context(analysis_data: dict[str, Any]) -> dict[str, Any]:
 
     # 3. Xử lý Timeline bằng Pydantic (Rút gọn hoàn toàn)
     raw_timeline = analysis_data.get("timeline") or []
+    # Thống kê theo khoảng tính trên TOÀN BỘ timeline, không phụ thuộc việc lấy mẫu bên dưới.
+    time_analysis = build_time_buckets(raw_timeline)
     timeline_samples = []
     if isinstance(raw_timeline, list):
         for item in _sample_evenly(raw_timeline, MAX_VIDEO_TIMELINE_SAMPLES):
@@ -208,6 +211,12 @@ def _build_video_context(analysis_data: dict[str, Any]) -> dict[str, Any]:
         "face_samples_are_limited": len(raw_faces) > MAX_VIDEO_FACE_SAMPLES,
         "timeline_samples": timeline_samples,
         "timeline_is_sampled": len(raw_timeline) > MAX_VIDEO_TIMELINE_SAMPLES,
+        "summary_insights": (
+            summary_insights(clean_summary)
+            if summary_unit in {"percent", "percentage", "pct"}
+            else None
+        ),
+        "time_analysis": time_analysis,
         "data_origin": "deepface_video_analysis",
         "note": (
             "Các nhãn biểu cảm là dự đoán của DeepFace; không phải bằng chứng "
@@ -225,8 +234,10 @@ def _normalize_live_data(analysis_data: dict[str, Any]) -> dict[str, Any]:
         normalized["emotion_summary"] = normalized.get("emotionSummary")
     if "processed_frames" not in normalized:
         normalized["processed_frames"] = normalized.get("processedFrames")
-    if "summary_unit" not in normalized:
-        normalized["summary_unit"] = normalized.get("summaryUnit", "unknown")
+    # Không gán mặc định "unknown" ở đây: build_live_context tự đọc cả
+    # emotion_summary_unit / summary_unit / emotionSummaryUnit / summaryUnit.
+    if "summary_unit" not in normalized and normalized.get("summaryUnit"):
+        normalized["summary_unit"] = normalized["summaryUnit"]
     return normalized
 
 async def ask_emotion_chatbot(

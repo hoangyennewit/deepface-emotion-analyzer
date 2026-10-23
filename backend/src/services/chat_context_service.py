@@ -11,12 +11,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.repositories.analysis_repository import (
     get_analysis_session_by_id,
     get_analysis_sessions,
-    get_face_analyses_by_session,
+)
+# Dùng nguyên hàm có sẵn của history_service (không sửa file đó) để số liệu chatbot
+# luôn khớp trang Lịch sử.
+from src.services.history_service import (
+    POSITIVE_EMOTIONS,
+    _session_to_history as build_session_history,
 )
 
 SOURCES = frozenset({"image", "video", "webcam", "all"})
 MAX_DASHBOARD_SESSIONS = 20
 MAX_TIMELINE_SAMPLES = 30
+MAX_LIVE_TIMELINE_INPUT = 600  # số mốc cuối tối đa đọc từ payload live
+
+# Nhóm tiêu cực/tích cực. POSITIVE_EMOTIONS lấy từ history_service (happy, surprise)
+# để chatbot và trang Lịch sử cùng một định nghĩa.
+NEGATIVE_EMOTIONS = ("angry", "disgust", "fear", "sad")
+FLAT_TOP_SHARE = 35.0  # nhãn cao nhất dưới ngưỡng này = phân bố phẳng, không nổi trội
+PERCENT_UNITS = frozenset({"percent", "percentage", "pct"})
+
+# Thống kê theo khoảng thời gian: tối đa MAX_TIME_BUCKETS khoảng, độ rộng chọn từ danh sách.
+MAX_TIME_BUCKETS = 24
+_BUCKET_SECONDS_CHOICES = (1, 2, 5, 10, 15, 30, 60, 120, 300, 600)
 
 
 def _number(value: Any) -> float | None:
@@ -57,6 +73,175 @@ def _dominant_emotion(emotions: dict[str, float]) -> str | None:
     if not emotions:
         return None
     return max(emotions, key=emotions.get)
+
+
+def _format_clock(seconds: float) -> str:
+    """Định dạng giây thành m:ss (75 -> 1:15)."""
+    minutes, secs = divmod(max(0, int(round(seconds))), 60)
+    return f"{minutes}:{secs:02d}"
+
+
+def summary_insights(percent: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Tính sẵn các chỉ số tổng hợp từ tỷ lệ cảm xúc, không để Gemini tự cộng.
+
+    positive_percent dùng cùng định nghĩa với trang Lịch sử (happy + surprise).
+    distribution_is_flat = nhãn cao nhất chiếm dưới FLAT_TOP_SHARE%, tức không có
+    cảm xúc nào nổi trội (thường là nhiễu của bộ nhận diện).
+    """
+    clean = {
+        str(name): number
+        for name, raw in (percent or {}).items()
+        if (number := _number(raw)) is not None and number >= 0
+    }
+    total = sum(clean.values())
+    if total <= 0:
+        return None
+    # Tỷ lệ đã tổng ~100 thì giữ nguyên để trùng khớp từng chữ số với giao diện.
+    scale = 1.0 if abs(total - 100.0) < 1.0 else 100.0 / total
+    top = max(clean, key=clean.get)
+    top_share = round(clean[top] * scale, 2)
+    return {
+        "top_emotion": top,
+        "top_emotion_share": top_share,
+        "distribution_is_flat": top_share < FLAT_TOP_SHARE,
+        "positive_percent": round(
+            sum(clean.get(e, 0.0) for e in POSITIVE_EMOTIONS) * scale, 1
+        ),
+        "negative_percent": round(
+            sum(clean.get(e, 0.0) for e in NEGATIVE_EMOTIONS) * scale, 1
+        ),
+        "positive_definition": "happy + surprise",
+        "negative_definition": "angry + disgust + fear + sad",
+    }
+
+
+def build_time_buckets(
+    timeline: Any,
+    *,
+    max_buckets: int = MAX_TIME_BUCKETS,
+) -> dict[str, Any] | None:
+    """Thống kê cảm xúc theo từng khoảng thời gian, tính trên TOÀN BỘ timeline.
+
+    ``timeline`` là danh sách {"time": giây, "emotions": {nhãn: điểm}}. Mỗi mốc được
+    chuẩn hóa về tổng 100, sau đó gom vào các khoảng bằng nhau (tối đa max_buckets).
+    Nhờ vậy câu hỏi "từ A đến B cảm xúc gì" hay "có cảm xúc tiêu cực không" được
+    trả lời từ số liệu đầy đủ, không phụ thuộc vào việc lấy mẫu vài chục mốc.
+    """
+    if not isinstance(timeline, list):
+        return None
+
+    points: list[tuple[float, dict[str, float]]] = []
+    for item in timeline:
+        if not isinstance(item, dict):
+            continue
+        moment = _number(item.get("time", item.get("timestamp_seconds")))
+        emotions = item.get("emotions")
+        if moment is None or moment < 0 or not isinstance(emotions, dict):
+            continue
+        clean = {
+            str(name): number
+            for name, raw in emotions.items()
+            if (number := _number(raw)) is not None and number >= 0
+        }
+        total = sum(clean.values())
+        if total <= 0:
+            continue
+        points.append((moment, {k: v * 100.0 / total for k, v in clean.items()}))
+    if not points:
+        return None
+
+    points.sort(key=lambda p: p[0])
+    start = float(math.floor(points[0][0]))
+    end = points[-1][0]
+    span = end - start
+    size = next(
+        (s for s in _BUCKET_SECONDS_CHOICES if span / s < max_buckets),
+        _BUCKET_SECONDS_CHOICES[-1],
+    )
+
+    grouped: dict[int, list[dict[str, float]]] = defaultdict(list)
+    for moment, shares in points:
+        grouped[int((moment - start) // size)].append(shares)
+
+    buckets: list[dict[str, Any]] = []
+    indexes: list[int] = []
+    for index in sorted(grouped):
+        members = grouped[index]
+        labels = {label for member in members for label in member}
+        average = {
+            label: round(sum(m.get(label, 0.0) for m in members) / len(members), 2)
+            for label in labels
+        }
+        b_from = start + index * size
+        b_to = min(start + (index + 1) * size, max(math.ceil(end), b_from + 1))
+        buckets.append(
+            {
+                "from": _format_clock(b_from),
+                "to": _format_clock(b_to),
+                "from_seconds": int(b_from),
+                "to_seconds": int(b_to),
+                "dominant_emotion": max(average, key=average.get),
+                "negative_percent": round(
+                    sum(average.get(e, 0.0) for e in NEGATIVE_EMOTIONS), 1
+                ),
+                "emotion_percent": average,
+                "moments": len(members),
+            }
+        )
+        indexes.append(index)
+
+    # Gộp các khoảng liền kề có cùng nhãn nổi bật thành một đoạn.
+    runs: list[dict[str, Any]] = []
+    for position, bucket in enumerate(buckets):
+        adjacent = position > 0 and indexes[position] == indexes[position - 1] + 1
+        if (
+            runs
+            and adjacent
+            and runs[-1]["emotion"] == bucket["dominant_emotion"]
+        ):
+            runs[-1]["to"] = bucket["to"]
+            runs[-1]["to_seconds"] = bucket["to_seconds"]
+        else:
+            runs.append(
+                {
+                    "emotion": bucket["dominant_emotion"],
+                    "from": bucket["from"],
+                    "to": bucket["to"],
+                    "from_seconds": bucket["from_seconds"],
+                    "to_seconds": bucket["to_seconds"],
+                }
+            )
+
+    worst = max(buckets, key=lambda b: b["negative_percent"])
+    peaks: dict[str, dict[str, Any]] = {}
+    for bucket in buckets:
+        for label, value in bucket["emotion_percent"].items():
+            if label not in peaks or value > peaks[label]["percent"]:
+                peaks[label] = {
+                    "from": bucket["from"],
+                    "to": bucket["to"],
+                    "percent": value,
+                }
+
+    return {
+        "bucket_seconds": size,
+        "time_range": {"from": _format_clock(start), "to": _format_clock(end)},
+        "moments_total": len(points),
+        "buckets": buckets,
+        "dominant_runs": runs,
+        "negative_peak": {
+            "from": worst["from"],
+            "to": worst["to"],
+            "negative_percent": worst["negative_percent"],
+        },
+        "emotion_peaks": peaks,
+        "note": (
+            "Mỗi khoảng là trung bình các mốc đo nằm trong khoảng đó, tính từ toàn bộ "
+            "dữ liệu (không lấy mẫu). Độ phân giải thời gian là bucket_seconds giây; "
+            "không nội suy bên trong một khoảng. Khoảng vắng mặt nghĩa là không phát "
+            "hiện khuôn mặt."
+        ),
+    }
 
 
 def summarize_faces(faces: Iterable[Any]) -> dict[str, Any]:
@@ -194,26 +379,45 @@ def build_live_context(
             if sample:
                 timeline_samples.append(sample)
 
+    # Thống kê theo khoảng thời gian trên các mốc gần nhất mà giao diện gửi lên.
+    time_analysis = (
+        build_time_buckets(raw_timeline[-MAX_LIVE_TIMELINE_INPUT:])
+        if isinstance(raw_timeline, list)
+        else None
+    )
+
     processed_frames = _non_negative_int(
         analysis_data.get("processed_frames", analysis_data.get("processedFrames"))
     )
     total_faces = _non_negative_int(
         analysis_data.get("total_faces", analysis_data.get("totalFaces"))
     )
-    raw_unit = analysis_data.get(
+    # Duyệt đủ 4 tên key (snake_case + camelCase); bỏ qua giá trị rỗng/"unknown" để
+    # một key mặc định không che mất đơn vị thật ở key khác.
+    summary_unit = "unknown"
+    for unit_key in (
         "emotion_summary_unit",
-        analysis_data.get("summary_unit", analysis_data.get(
-            "emotionSummaryUnit", analysis_data.get("summaryUnit", "unknown")
-        )),
-    )
-    summary_unit = str(raw_unit or "unknown").strip().lower()
+        "summary_unit",
+        "emotionSummaryUnit",
+        "summaryUnit",
+    ):
+        candidate = str(analysis_data.get(unit_key) or "").strip().lower()
+        if candidate and candidate != "unknown":
+            summary_unit = candidate
+            break
     raw_basis = analysis_data.get(
         "emotion_summary_basis",
         analysis_data.get("emotionSummaryBasis"),
     )
     summary_basis = str(raw_basis).strip() if raw_basis else None
 
-    if not summary and not timeline_samples and processed_frames is None and total_faces is None:
+    if (
+        not summary
+        and not timeline_samples
+        and time_analysis is None
+        and processed_frames is None
+        and total_faces is None
+    ):
         return None
 
     # Percentages supplied by the analyzer are authoritative; counts are normalized here.
@@ -239,7 +443,12 @@ def build_live_context(
         "emotion_summary_total": summary_total,
         "emotion_summary_percent": summary_percent,
         "emotion_summary_basis": summary_basis,
+        "summary_insights": summary_insights(summary_percent) if summary_percent else None,
+        "time_analysis": time_analysis,
         "timeline_samples": timeline_samples,
+        "timeline_samples_are_recent_only": (
+            isinstance(raw_timeline, list) and len(raw_timeline) > MAX_TIMELINE_SAMPLES
+        ),
         "data_origin": "live_webcam_deepface_pipeline",
         "note": (
             "Các nhãn biểu cảm là dự đoán của DeepFace, không xác nhận cảm xúc thật "
@@ -247,6 +456,54 @@ def build_live_context(
             "không mặc nhiên là mẫu số của emotion_summary."
         ),
     }
+
+
+def _session_context(
+    session: Any,
+    statistics: dict[str, Any],
+    *,
+    detail: bool,
+) -> dict[str, Any]:
+    """Số liệu một phiên cho chatbot, lấy từ cùng hàm mà trang Lịch sử dùng."""
+    entry = build_session_history(session, detail=detail)
+    summary = entry.get("emotion_summary") or {}
+    has_faces = statistics["face_observations"] > 0
+
+    context: dict[str, Any] = {
+        "session_id": entry["id"],
+        "source_type": entry["type"],
+        "source_name": entry["filename"],
+        "status": entry["status"],
+        # recorded_at là lúc lưu phiên, KHÔNG phải thời gian trong video.
+        "recorded_at": entry["created_at"],
+        "duration_seconds": entry["duration_seconds"],
+        "duration": entry["duration"],
+        "people_count": entry["total_faces"],
+        "face_observations": statistics["face_observations"],
+        "dominant_emotion": entry["dominant_emotion"] if has_faces else None,
+        "emotion_percent": summary,
+        "emotion_percent_basis": "share_of_aggregate_deepface_scores",
+        "summary_insights": summary_insights(summary),
+        "dominant_label_counts": statistics["dominant_counts"],
+    }
+
+    if detail:
+        time_analysis = build_time_buckets(entry.get("timeline"))
+        if time_analysis is not None:
+            context["time_analysis"] = time_analysis
+        people = [
+            {
+                "id": person["id"],
+                "appearance_rate_percent": person["appearance_rate"],
+                "dominant_emotion": person["dominant_emotion"],
+                "emotion_percent": person["emotion_summary"],
+                "positive_percent": person["positive_rate"],
+            }
+            for person in entry.get("people", [])
+        ]
+        if people:
+            context["people"] = people
+    return context
 
 
 async def build_dashboard_context(
@@ -290,29 +547,21 @@ async def build_dashboard_context(
     if not sessions:
         raise LookupError("Chưa có dữ liệu phân tích trong database")
 
+    # Chỉ có một phiên được chọn thì kèm timeline theo khoảng và danh sách người.
+    detail = session_id is not None
+
     session_details: list[dict[str, Any]] = []
     combined_dominant_counts: Counter[str] = Counter()
     combined_emotion_score_totals: dict[str, float] = defaultdict(float)
 
     for session in sessions:
-        face_rows = await get_face_analyses_by_session(
-            db=db,
-            session_id=session.id,
-        )
-        statistics = summarize_faces(face_rows)
+        # face_analyses đã được nạp sẵn (selectinload) trong repository, và đây cũng
+        # chính là dữ liệu mà history_service dùng.
+        statistics = summarize_faces(list(session.face_analyses))
         combined_dominant_counts.update(statistics["dominant_counts"])
-        for label, total in statistics.pop("emotion_score_totals").items():
+        for label, total in statistics["emotion_score_totals"].items():
             combined_emotion_score_totals[label] += total
-
-        session_details.append({
-            "session_id": str(session.id),
-            "source_type": session.source_type,
-            "source_name": session.source_name,
-            "status": session.status,
-            "started_at": _iso(getattr(session, "started_at", None)),
-            "ended_at": _iso(getattr(session, "ended_at", None)),
-            "statistics": statistics,
-        })
+        session_details.append(_session_context(session, statistics, detail=detail))
 
     combined_score_total = sum(combined_emotion_score_totals.values())
     combined_emotion_score_percent = (
@@ -320,7 +569,7 @@ async def build_dashboard_context(
             label: round(total * 100 / combined_score_total, 2)
             for label, total in combined_emotion_score_totals.items()
         }
-        if combined_score_total
+        if len(session_details) > 1 and combined_score_total
         else {}
     )
 
@@ -336,9 +585,11 @@ async def build_dashboard_context(
         "emotion_score_basis": "share_of_aggregate_deepface_scores",
         "sessions": session_details,
         "note": (
-            "Thống kê được tính từ các bản ghi FaceAnalysis đã truy xuất. "
-            "Một bản ghi là một lượt dự đoán khuôn mặt, không phải một người duy nhất. "
-            "Nếu không chọn session_id, dữ liệu chỉ gồm tối đa các phiên gần nhất "
-            "theo limit, không phải toàn bộ lịch sử database."
+            "Số liệu từng phiên (emotion_percent, positive/negative_percent, duration, "
+            "people_count) lấy từ cùng hàm với trang Lịch sử nên khớp giao diện. "
+            "combined_emotion_score_percent chỉ là số gộp nhiều phiên gần nhất theo số "
+            "bản ghi khuôn mặt, không phải trung bình các phiên. Một bản ghi là một lượt "
+            "dự đoán khuôn mặt, không phải một người. Nếu không chọn session_id, dữ liệu "
+            "chỉ gồm tối đa các phiên gần nhất theo limit, không phải toàn bộ lịch sử."
         ),
     }

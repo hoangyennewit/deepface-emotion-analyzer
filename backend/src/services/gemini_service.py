@@ -1,13 +1,10 @@
-"""Giao tiếp Gemini API cho chatbot phân tích biểu cảm.
-
-File này chỉ gọi Gemini; không truy vấn PostgreSQL và không chạy DeepFace.
-"""
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -19,10 +16,8 @@ from google.genai import errors, types
 
 logger = logging.getLogger(__name__)
 
-# [THÊM] backend/src/services/ -> backend/.env
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-# [THÊM] Các lỗi có thể thử model dự phòng. Không fallback với lỗi cấu hình/quyền.
 _RETRYABLE_STATUS_CODES = {404, 408, 429, 500, 502, 503, 504}
 _DEFAULT_MODEL = "gemini-3.6-flash"
 _DEFAULT_FALLBACKS = (
@@ -51,14 +46,28 @@ QUY TẮC DỮ LIỆU (áp dụng cho loại 1-6)
 - Các giá trị trong emotion_summary không tự động là "điểm" hay "phần trăm".
 - Chỉ xem emotion_summary là số đếm khi đơn vị (emotion_summary_unit hoặc summary_unit) là
   count, counts, observation_count hoặc observations.
-- Nếu context có emotion_summary_percent hoặc dominant_percent, dùng đúng các tỷ lệ đó; không
+- Nếu context có emotion_summary_percent hoặc emotion_percent, dùng đúng các tỷ lệ đó; không
   tự tính lại. Được phép cộng các tỷ lệ đã có (ví dụ tổng tỷ lệ cảm xúc tiêu cực).
 - emotion_summary_percent với emotion_summary_basis là share_of_aggregate_deepface_scores biểu
   thị tỷ trọng điểm dự đoán DeepFace đã cộng gộp, không phải tỷ lệ số khung hình, khuôn mặt hay
-  lượt có nhãn chủ đạo. dominant_percent mới là tỷ lệ lượt có nhãn dominant_emotion.
-- Với dashboard, ưu tiên combined_emotion_score_percent hoặc từng session.statistics.emotion_score_percent
-  khi trả lời tỷ lệ cảm xúc; đây là tỷ trọng điểm DeepFace và khớp cách chuẩn hóa thống kê.
-  Chỉ dùng dominant_percent/dominant_counts khi người dùng hỏi số lượt nhãn chủ đạo.
+  lượt có nhãn chủ đạo. dominant_label_counts mới là số lượt có nhãn chủ đạo.
+- Số liệu của phiên (dashboard và video lấy từ database) khớp trang Lịch sử:
+  + emotion_percent là "Tỉ lệ cảm xúc tổng thể" trên giao diện (tỷ trọng điểm DeepFace cộng gộp,
+    tổng 100). Đây là số duy nhất dùng khi trả lời "bao nhiêu phần trăm"; không tự tính lại.
+  + dominant_emotion là cảm xúc chủ đạo của phiên theo số lượt nhãn (khớp kết quả nhanh ở Lịch sử).
+    Nó có thể khác nhãn có emotion_percent cao nhất; khi hai nhãn khác nhau, nêu cả hai kèm một
+    câu giải thích ngắn (một bên đếm số lượt nhãn, một bên cộng điểm).
+  + summary_insights.positive_percent = happy + surprise; negative_percent = angry + disgust + fear
+    + sad. Khi nói "tích cực" hoặc "tiêu cực", dùng đúng các giá trị này và nêu thành phần.
+  + dominant_label_counts chỉ dùng khi người dùng hỏi số lượt nhãn chủ đạo.
+  + combined_emotion_score_percent (nếu có) là số gộp nhiều phiên gần nhất theo số bản ghi, không
+    phải trung bình các phiên; phải nói rõ khi dùng.
+  + duration và duration_seconds là thời lượng của video/webcam. recorded_at chỉ là lúc lưu phiên,
+    không dùng làm mốc thời gian trong video. people_count là số người sau khi ghép theo dõi;
+    face_observations là số bản ghi khuôn mặt, không phải số người.
+- Nếu summary_insights.distribution_is_flat là true (nhãn cao nhất dưới 35%), nghĩa là không có
+  cảm xúc nào nổi trội: nói rõ điều này, độ tin cậy tối đa "thấp", không suy ra lo âu/căng thẳng/
+  mệt mỏi chỉ vì tổng nhóm tiêu cực cao, và không gọi một nhãn là "chủ đạo rõ rệt".
 - Nếu đơn vị là số đếm nhưng chưa có tỷ lệ được cung cấp, chỉ tính tỷ lệ trên tổng
   emotion_summary; nêu rõ đó là tỷ lệ trên tổng lượt ghi nhận nhãn.
 - Không dùng processed_frames hoặc total_faces làm mẫu số của emotion_summary, trừ khi context
@@ -71,19 +80,26 @@ QUY TẮC DỮ LIỆU (áp dụng cho loại 1-6)
 - Nếu context trống hoặc thiếu phần cần thiết, nói rõ thiếu dữ liệu nào; không đoán.
 
 XỬ LÝ THỜI GIAN (loại 1 và 2)
-- Mốc thời gian lấy từ timeline_samples (timestamp_seconds, frame_index) và từ started_at,
-  ended_at của phiên. Hiển thị dạng m:ss (ví dụ 75 giây thành 1:15).
-- Nhãn nổi bật của một mốc là dominant_emotion nếu có; nếu mốc chỉ có emotions thì lấy nhãn
-  có giá trị lớn nhất và ghi chú đó là nhãn nổi bật của mốc.
-- timeline_samples thường chỉ là các mốc lấy mẫu (timeline_is_sampled có thể là true), nên mọi
-  khoảng thời gian chỉ là gần đúng. Dùng cách nói "khoảng ... đến ...", "giữa các mốc ...".
-  Không khẳng định thời điểm bắt đầu hoặc kết thúc chính xác.
-- Một khoảng liên tiếp gồm các mốc cùng nhãn nổi bật được gộp thành một dòng.
-- Nếu không thấy nhãn đó ở các mốc hiện có, nói "không thấy trong các mốc có dữ liệu"; không
-  khẳng định nó chưa từng xuất hiện khi timeline chỉ là mẫu.
-- Nếu người dùng hỏi một khoảng nằm ngoài phạm vi timeline, hoặc context không có mốc thời
-  gian, nói rõ chưa xác định được. Với "vừa rồi", "gần đây" trong chế độ live, lấy mốc lớn
-  nhất làm điểm cuối và dùng window_seconds nếu có.
+- Ưu tiên time_analysis (Python đã tính sẵn trên toàn bộ dữ liệu, không lấy mẫu): buckets (từng
+  khoảng from-to kèm dominant_emotion, negative_percent, emotion_percent), dominant_runs (các đoạn
+  liên tiếp cùng nhãn nổi bật), negative_peak (khoảng nhóm tiêu cực cao nhất), emotion_peaks
+  (khoảng mỗi cảm xúc cao nhất).
+- Chỉ dùng đúng mốc from/to có sẵn (dạng m:ss), không nội suy bên trong một khoảng. Nếu người dùng
+  hỏi khoảng không trùng ranh giới, liệt kê các khoảng giao với khoảng đó và nói độ phân giải là
+  bucket_seconds giây.
+- "Cảm xúc gì từ A đến B": lấy dominant_emotion của các khoảng nằm trong A-B (có thể gộp theo
+  dominant_runs), kèm emotion_percent nếu cần.
+- "Có cảm xúc tiêu cực trong A-B không": khoảng có dominant_emotion thuộc nhóm tiêu cực, hoặc có
+  negative_percent từ 50 trở lên, là "có nổi trội": nêu khoảng và nhãn. Nếu không có khoảng nào như
+  vậy, trả lời "không nổi trội" và nêu negative_percent cao nhất trong A-B. Không trả lời tuyệt đối
+  "không có", vì điểm tiêu cực luôn hiện diện ở mức thấp.
+- Khoảng không có trong buckets nghĩa là không phát hiện khuôn mặt hoặc nằm ngoài dữ liệu: nói chưa
+  xác định được.
+- Nếu không có time_analysis mà chỉ có timeline_samples, mọi mốc chỉ là gần đúng (đã lấy mẫu hoặc
+  chỉ là các mốc gần nhất): dùng cách nói "khoảng ... đến ...", không khẳng định thời điểm chính xác,
+  và nếu không thấy một nhãn thì nói "không thấy trong các mốc có dữ liệu".
+- Chế độ live: time_analysis và timeline_samples chỉ gồm các mốc gần nhất mà giao diện gửi lên.
+  Với "vừa rồi", "gần đây", lấy mốc lớn nhất làm điểm cuối và dùng window_seconds nếu có.
 
 CÁCH TRẢ LỜI TỪNG LOẠI
 Loại 1, cảm xúc tiêu cực: nhóm tiêu cực gồm angry, disgust, fear, sad. Surprise không tính là
@@ -136,8 +152,8 @@ Loại 6, tất cả cảm xúc:
 
 📋 Tổng hợp cảm xúc
 • <nhãn>: <số liệu>
-Liệt kê mọi nhãn có trong dữ liệu, sắp xếp giảm dần. Có thể chia nhóm: tích cực (happy),
-tiêu cực (angry, disgust, fear, sad), trung tính/khác (neutral, surprise).
+Liệt kê mọi nhãn có trong dữ liệu, sắp xếp giảm dần. Có thể chia nhóm: tích cực (happy, surprise),
+tiêu cực (angry, disgust, fear, sad), bình thường (neutral).
 
 🔎 Đánh giá
 • <chủ đạo và mức chênh lệch>
@@ -192,8 +208,9 @@ GIỚI HẠN AN TOÀN
 - Không dùng dấu ** hoặc # ; không lồng gạch đầu dòng. Chỉ dùng ký tự • cho danh sách một cấp.
   Mỗi mục xuống dòng riêng, các khối cách nhau bằng một dòng trống.
 - Mỗi gạch đầu dòng tối đa khoảng 15 từ, mỗi ý một dòng.
-- Viết tên nhãn bằng tiếng Việt kèm số liệu, ví dụ "Trung tính 221 lượt", "Buồn 106 lượt".
-  Không lặp lại tên tiếng Anh trong ngoặc cho từng nhãn.
+- Viết tên nhãn bằng tiếng Việt kèm số liệu; luôn dịch nhãn neutral thành "Bình thường",
+  ví dụ "Bình thường 221 lượt", "Buồn 106 lượt". Không lặp lại tên tiếng Anh trong ngoặc
+  cho từng nhãn.
 - Khi gộp nhiều loại, giữ mỗi khối một lần, đặt theo thứ tự: tiêu cực/thời gian, chủ đạo,
   nâng cao, kết luận và gợi ý. Bỏ dòng "Lưu ý" lặp lại; chỉ cần một câu lưu ý ở cuối khi có dự
   đoán nâng cao: "⚠️ Đây là ước lượng từ biểu cảm khuôn mặt, không phải chẩn đoán."
@@ -227,22 +244,28 @@ class GeminiEmptyResponseError(GeminiServiceError):
     """Gemini không trả về nội dung văn bản."""
 
 
+def _normalize_emotion_labels(answer: str) -> str:
+    return re.sub(
+        r"\btrung tính\b",
+        lambda match: "Bình thường" if match.group()[0].isupper() else "bình thường",
+        answer,
+        flags=re.IGNORECASE,
+    )
+
+
 class GeminiVideoError(GeminiServiceError):
     """Không thể upload hoặc chuẩn bị video cho Gemini."""
 
 
 def get_priority_models() -> list[str]:
-    """[THÊM] Lấy model chính và danh sách dự phòng theo thứ tự ưu tiên."""
     primary = os.getenv("GEMINI_MODEL", _DEFAULT_MODEL).strip()
     fallback = os.getenv("GEMINI_FALLBACK_MODELS", _DEFAULT_FALLBACKS)
-    # dict giữ thứ tự và loại model bị lặp.
     return list(dict.fromkeys(
         name.strip() for name in [primary, *fallback.split(",")] if name.strip()
     ))
 
 
 def _create_client() -> genai.Client:
-    """[THÊM] Tạo SDK client từ API key trong backend/.env."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise GeminiConfigurationError(
@@ -266,7 +289,6 @@ def _create_client() -> genai.Client:
 
 
 def _build_user_message(message: str, context: dict[str, Any] | None) -> str:
-    """[THÊM] Đóng gói câu hỏi và context (nếu có) thành nội dung text."""
     if not isinstance(message, str) or not message.strip():
         raise ValueError("message không được để trống")
 
@@ -285,7 +307,6 @@ def _build_user_message(message: str, context: dict[str, Any] | None) -> str:
 
 
 def _generation_config() -> types.GenerateContentConfig:
-    """[THÊM] Cấu hình chung cho câu trả lời chatbot."""
     try:
         max_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "4096"))
         if max_tokens <= 0:
@@ -312,7 +333,6 @@ async def _generate_using_models(
     client: genai.Client,
     contents: Any,
 ) -> dict[str, Any]:
-    """[THÊM] Dùng chung logic fallback cho request text và video."""
     models = get_priority_models()
     if not models:
         raise GeminiConfigurationError("Danh sách Gemini model đang trống.")
@@ -332,10 +352,10 @@ async def _generate_using_models(
                 )
                 answer = (response.text or "").strip()
                 if not answer:
-                    # Không fallback khi response rỗng/safety filter; cần xử lý riêng.
                     raise GeminiEmptyResponseError(
                         f"Gemini model {model} không trả về nội dung văn bản."
                     )
+                answer = _normalize_emotion_labels(answer)
                 return {
                     "answer": answer,
                     "model": model,
@@ -373,11 +393,6 @@ async def generate_with_fallback(
     message: str,
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """[THÊM] Gửi câu hỏi + dữ liệu DeepFace JSON tới Gemini.
-
-    Dùng cho Webcam Live hoặc Dashboard. Trả về answer, model, used_fallback,
-    attempted_models và input_type.
-    """
     contents = _build_user_message(message, context)
     client = _create_client()
     try:
@@ -392,12 +407,10 @@ async def analyze_emotion_data(
     prompt: str,
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """[THÊM] Tên hàm rõ nghĩa cho câu hỏi dựa trên kết quả DeepFace."""
     return await generate_with_fallback(prompt, context)
 
 
 async def _wait_for_video_active(client: genai.Client, uploaded_file: Any) -> Any:
-    """[THÊM] Chờ Gemini Files API chuyển video sang trạng thái ACTIVE."""
     try:
         timeout_seconds = int(os.getenv("GEMINI_VIDEO_PROCESSING_TIMEOUT_SECONDS", "180"))
         if timeout_seconds <= 0:
@@ -432,11 +445,6 @@ async def analyze_video_content(
     prompt: str,
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """[THÊM] Gửi video gốc + context DeepFace tùy chọn cho Gemini phân tích.
-
-    Video được upload lên Google Gemini API. Mặc định file upload từ xa sẽ bị
-    xóa sau request; file gốc trên máy chủ dự án không bị xóa.
-    """
     path = Path(video_path).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(f"Không tìm thấy file video: {path}")
@@ -469,7 +477,6 @@ async def analyze_video_content(
         result["input_type"] = "video"
         return result
     finally:
-        # [THÊM] Xóa bản upload từ Gemini; không xóa file video gốc của dự án.
         remote_name = getattr(uploaded_file, "name", None) if uploaded_file else None
         if delete_remote and remote_name:
             try:
