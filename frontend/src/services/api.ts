@@ -1,6 +1,8 @@
 import type { EmotionType } from '../types/video';
+import { API_BASE_URL } from '../api/config';
+import { getAccessToken } from '../api/authApi';
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+export { API_BASE_URL } from '../api/config';
 
 export interface EmotionScores {
   happy: number;
@@ -110,7 +112,9 @@ export async function analyzeImage(file: File): Promise<ImageAnalysisResult> {
     try {
       const err = await res.json();
       if (err?.detail) msg = err.detail;
-    } catch {}
+    } catch {
+      // Keep the fallback message when the error response is not JSON.
+    }
     throw new Error(msg);
   }
 
@@ -131,7 +135,9 @@ export async function analyzeVideo(file: File): Promise<VideoAnalysisResult> {
     try {
       const err = await res.json();
       if (err?.detail) msg = err.detail;
-    } catch {}
+    } catch {
+      // Keep the fallback message when the error response is not JSON.
+    }
     throw new Error(msg);
   }
 
@@ -187,7 +193,9 @@ export async function deleteHistoryItem(id: string): Promise<boolean> {
 }
 
 export async function getUserProfile(): Promise<UserProfile> {
-  const res = await fetch(`${API_BASE_URL}/user/profile`);
+  const res = await fetch(`${API_BASE_URL}/user/profile`, {
+    headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` },
+  });
   if (!res.ok) throw new Error('Không lấy được thông tin người dùng');
   return res.json();
 }
@@ -195,8 +203,11 @@ export async function getUserProfile(): Promise<UserProfile> {
 export async function updateUserProfile(data: Partial<UserProfile>): Promise<UserProfile> {
   const res = await fetch(`${API_BASE_URL}/user/profile`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+    },
+    body: JSON.stringify({ name: data.name, email: data.email }),
   });
   if (!res.ok) throw new Error('Không cập nhật được hồ sơ');
   const json = await res.json();

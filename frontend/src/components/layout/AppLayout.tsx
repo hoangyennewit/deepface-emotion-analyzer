@@ -18,8 +18,8 @@ export const AppLayout: React.FC = () => {
   const isHistoryDetailPage = useMatch('/history/:id');
   const isHistoryPage = Boolean(isHistoryListPage || isHistoryDetailPage);
   const [profile, setProfile] = useState<UserProfile>({
-    name: 'Nguyễn Văn A',
-    email: 'nguyenvana@gmail.com',
+    name: '',
+    email: '',
     avatar: '',
     role: 'User',
   });
@@ -27,7 +27,7 @@ export const AppLayout: React.FC = () => {
   useEffect(() => {
     getUserProfile()
       .then((data) => setProfile(data))
-      .catch((err) => console.log('Fetch profile err, using fallback:', err));
+      .catch((err) => console.error('Không thể tải hồ sơ người dùng:', err));
   }, []);
 
   return (

@@ -2,6 +2,7 @@ import { Eye, EyeOff, LockKeyhole, Mail, ScanFace, UserRound } from "lucide-reac
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { register } from "../api/authApi";
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
@@ -12,15 +13,26 @@ export const RegisterPage = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (password !== confirmPassword) {
       setError("Mật khẩu xác nhận không khớp.");
       return;
     }
     setError("");
-    navigate("/");
+    setIsSubmitting(true);
+    try {
+      await register(email, password, name);
+      navigate("/login", {
+        state: { message: "Đăng ký thành công. Vui lòng đăng nhập." },
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể tạo tài khoản.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -151,8 +163,9 @@ export const RegisterPage = () => {
                 <button
                   className="w-full rounded-lg bg-[#2563EB] px-5 py-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(37,99,235,0.22)] transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-4 focus:ring-[#DBEAFE]"
                   type="submit"
+                  disabled={isSubmitting}
                 >
-                  Tạo tài khoản
+                  {isSubmitting ? "Đang tạo tài khoản..." : "Tạo tài khoản"}
                 </button>
               </form>
 

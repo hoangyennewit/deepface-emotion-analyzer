@@ -1,4 +1,4 @@
-const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../api/config";
 
 export type HistoryType = "image" | "video" | "webcam";
 
@@ -55,7 +55,7 @@ export interface WebcamSessionMeta {
 }
 
 export const mediaUrl = (path: string | null): string | null =>
-  path ? `${API_BASE}${path}` : null;
+  path ? `${API_BASE_URL}${path}` : null;
 
 export const formatDateTime = (iso: string): string =>
   new Date(iso).toLocaleString("vi-VN", {
@@ -80,7 +80,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  const res = await fetch(`${API_BASE_URL}${path}`, init);
   if (!res.ok) {
     let detail = `Lỗi server (${res.status})`;
     try {
@@ -95,13 +95,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const getHistory = (type: "all" | HistoryType = "all") =>
-  request<HistoryItem[]>(`/emotion/history?source_type=${type}`);
+  request<HistoryItem[]>(`/emotion/history?type=${type}`);
 
 export const getHistoryDetail = (id: string) =>
-  request<HistoryItem>(`/emotion/history/${id}`);
+  request<HistoryItem>(`/emotion/history/${encodeURIComponent(id)}`);
 
 export const deleteHistoryItem = (id: string) =>
-  request<{ success: boolean }>(`/emotion/history/${id}`, { method: "DELETE" });
+  request<{ success: boolean }>(`/emotion/history/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 export function saveWebcamSession(video: Blob, meta: WebcamSessionMeta) {
   const form = new FormData();

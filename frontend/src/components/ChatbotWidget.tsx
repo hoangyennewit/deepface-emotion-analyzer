@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useLocation } from 'react-router-dom';
+import { API_BASE_URL } from '../api/config';
 
 interface Message {
   id: number;
@@ -99,7 +100,7 @@ export const ChatbotWidget: React.FC = () => {
     setInputValue("");
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/chat/emotion", {
+      const response = await fetch(`${API_BASE_URL}/chat/emotion`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),

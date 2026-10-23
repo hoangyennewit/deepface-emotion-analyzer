@@ -1,17 +1,45 @@
 import { Eye, EyeOff, LockKeyhole, Mail, ScanFace } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { login } from "../api/authApi";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const returnPath =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "from" in location.state &&
+    typeof location.state.from === "string" &&
+    location.state.from.startsWith("/")
+      ? location.state.from
+      : "/";
+  const registrationMessage =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "message" in location.state &&
+    typeof location.state.message === "string"
+      ? location.state.message
+      : "";
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    navigate("/");
+    setError("");
+    setIsSubmitting(true);
+    try {
+      await login(email, password);
+      navigate(returnPath, { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể đăng nhập.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -58,6 +86,16 @@ export const LoginPage = () => {
               <p className="mt-3 text-sm leading-6 text-[#64748B]">
                 Tiếp tục phiên phân tích cảm xúc của bạn.
               </p>
+              {registrationMessage && (
+                <p className="mt-4 text-sm font-medium text-[#16A34A]">
+                  {registrationMessage}
+                </p>
+              )}
+              {error && (
+                <p className="mt-4 text-sm font-medium text-[#DC2626]" role="alert">
+                  {error}
+                </p>
+              )}
 
               <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
                 <label className="block text-sm font-semibold text-[#334155]">
@@ -111,8 +149,9 @@ export const LoginPage = () => {
                 <button
                   className="w-full rounded-lg bg-[#2563EB] px-5 py-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(37,99,235,0.22)] transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-4 focus:ring-[#DBEAFE]"
                   type="submit"
+                  disabled={isSubmitting}
                 >
-                  Đăng nhập
+                  {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
                 </button>
               </form>
 

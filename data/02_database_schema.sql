@@ -1,6 +1,16 @@
 - 1.2. Database Schema — DeepFace Emotion Analyzer
 -- Database: PostgreSQL 
 
+-- Bảng người dùng (đăng ký / đăng nhập)
+CREATE TABLE users (
+    id              UUID PRIMARY KEY,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    hashed_password VARCHAR(255) NOT NULL,
+    full_name       VARCHAR(255),
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Bảng 1: Phiên phân tích (lưu metadata của ảnh/video/webcam)
 CREATE TABLE analysis_sessions (
     id              SERIAL PRIMARY KEY,
@@ -100,5 +110,4 @@ CREATE INDEX idx_emotion_type     ON emotion_scores(emotion);
    analysis_sessions (1) ──< (N) reports
    analysis_sessions (1) ──< (1) session_metrics   -- mỗi phiên 1 bộ chỉ số
    ============================================================ */
-
 

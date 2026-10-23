@@ -4,25 +4,22 @@ import type {
   VideoJob,
   WebcamResponse,
 } from "../types/emotion";
+import { API_BASE_URL } from "./config";
 
 // ============================================================
 // API client gọi Backend FastAPI
 // Base URL lấy từ biến môi trường VITE_API_URL (xem .env.example)
 // ============================================================
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-
-export const API_BASE_URL = API_URL;
-
 /** Các lỗi HTTP/network được gói lại thành thông điệp tiếng Việt */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, init);
+    res = await fetch(`${API_BASE_URL}${path}`, init);
   } catch {
     throw new Error(
       "Không kết nối được máy chủ. Hãy chắc chắn backend FastAPI đang chạy tại " +
-        API_URL
+        API_BASE_URL
     );
   }
   if (!res.ok) {
@@ -47,7 +44,7 @@ function toFormData(file: Blob | File, filename?: string): FormData {
 
 // ---------- Health ----------
 export async function checkHealth(): Promise<{ status: string }> {
-  return request("/health");
+  return request("/health/");
 }
 
 // ---------- Ảnh tĩnh (Task 2 — đã có) ----------

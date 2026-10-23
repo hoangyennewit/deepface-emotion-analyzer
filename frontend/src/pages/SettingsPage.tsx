@@ -7,12 +7,15 @@ import {
   type UserProfile,
   type SystemSettings,
 } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import { logout } from '../api/authApi';
 
 export const SettingsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile>({
-    name: 'Nguyễn Văn A',
-    email: 'nguyenvana@gmail.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=NguyenVanA',
+    name: '',
+    email: '',
+    avatar: '',
     role: 'User',
   });
 
@@ -25,8 +28,10 @@ export const SettingsPage: React.FC = () => {
   });
 
   const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
   const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [profileError, setProfileError] = useState<string>('');
   const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
 
   const [editName, setEditName] = useState<string>('');
@@ -37,7 +42,11 @@ export const SettingsPage: React.FC = () => {
       setProfile(p);
       setEditName(p.name);
       setEditEmail(p.email);
-    }).catch(console.error);
+    }).catch((err: unknown) => {
+      setProfileError(
+        err instanceof Error ? err.message : 'Không lấy được thông tin người dùng.'
+      );
+    }).finally(() => setIsLoadingProfile(false));
 
     getSystemSettings().then(setSettings).catch(console.error);
   }, []);
@@ -50,8 +59,8 @@ export const SettingsPage: React.FC = () => {
       setProfile(updated);
       setIsEditingProfile(false);
       setStatusMessage('Cập nhật hồ sơ thành công!');
-    } catch (err: any) {
-      alert(err.message || 'Lỗi khi cập nhật hồ sơ');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Lỗi khi cập nhật hồ sơ');
     } finally {
       setIsSavingProfile(false);
     }
@@ -64,8 +73,8 @@ export const SettingsPage: React.FC = () => {
       const updated = await updateSystemSettings(updates);
       setSettings(updated);
       setStatusMessage('Đã lưu cấu hình cài đặt!');
-    } catch (err: any) {
-      alert(err.message || 'Lỗi khi lưu cài đặt');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Lỗi khi lưu cài đặt');
     } finally {
       setIsSavingSettings(false);
     }
@@ -80,6 +89,11 @@ export const SettingsPage: React.FC = () => {
       {statusMessage && (
         <div style={{ padding: '12px 16px', backgroundColor: '#DCFCE7', color: '#16A34A', borderRadius: '8px', fontSize: '14px', fontWeight: 600 }}>
           ✓ {statusMessage}
+        </div>
+      )}
+      {profileError && (
+        <div role="alert" style={{ padding: '12px 16px', backgroundColor: '#FEE2E2', color: '#DC2626', borderRadius: '8px', fontSize: '14px', fontWeight: 600 }}>
+          {profileError}
         </div>
       )}
 
@@ -147,8 +161,14 @@ export const SettingsPage: React.FC = () => {
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: '18px', fontWeight: 800, color: '#0F254A' }}>{profile.name}</div>
-              <div style={{ fontSize: '14px', color: '#64748B', marginTop: '4px' }}>{profile.email}</div>
+              <div style={{ fontSize: '18px', fontWeight: 800, color: '#0F254A' }}>
+                {isLoadingProfile ? 'Đang tải...' : profile.name}
+              </div>
+              {!isLoadingProfile && (
+                <div style={{ fontSize: '14px', color: '#64748B', marginTop: '4px' }}>
+                  {profile.email}
+                </div>
+              )}
             </div>
           )}
 
@@ -176,6 +196,7 @@ export const SettingsPage: React.FC = () => {
 
             <button
               onClick={() => setIsEditingProfile(true)}
+              disabled={isLoadingProfile}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -197,7 +218,8 @@ export const SettingsPage: React.FC = () => {
             <button
               onClick={() => {
                 if (window.confirm('Bạn có muốn đăng xuất khỏi phiên làm việc?')) {
-                  alert('Đã đăng xuất.');
+                  logout();
+                  navigate('/login', { replace: true });
                 }
               }}
               style={{

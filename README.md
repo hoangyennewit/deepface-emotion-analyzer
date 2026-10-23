@@ -91,8 +91,9 @@ Cấu hình file môi trường frontend:
 - Sao chép file mẫu: `copy .env.example .env` (hoặc `cp .env.example .env`).
 - Thiết lập biến URL trỏ đến backend:
   ```env
-  VITE_API_URL=http://localhost:8000
+  VITE_API_URL=http://127.0.0.1:8000
   ```
+- Frontend dùng chung URL này cho các API; nếu thay đổi `.env`, hãy khởi động lại Vite.
 
 ---
 
@@ -152,6 +153,8 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 | :--- | :--- | :--- | :--- |
 | `GET` | `/` | Không | Thông tin chào mừng API |
 | `GET` | `/health/` | Không | Kiểm tra trạng thái máy chủ backend |
+| `POST` | `/auth/register` | JSON: `email`, `password`, `full_name` (tùy chọn) | Đăng ký tài khoản |
+| `POST` | `/auth/login` | Form: `username` (email), `password` | Đăng nhập và nhận access token |
 | `POST` | `/emotion/image` | `multipart/form-data` (`file`) | Phân tích ảnh và trả về cảm xúc/khuôn mặt nhận diện được |
 | `POST` | `/emotion/webcam` | `multipart/form-data` (`file`) | Phân tích một frame webcam: cảm xúc + trạng thái (tập trung/mất tập trung/mệt mỏi/bối rối) |
 | `POST` | `/emotion/video` | `multipart/form-data` (`file`) | Phân tích video đồng bộ; request chờ đến khi xử lý xong |

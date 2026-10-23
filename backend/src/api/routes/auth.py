@@ -6,7 +6,7 @@ from src.db.session import get_session as get_db
 from src.schemas.auth import UserRegister, UserResponse, Token
 from src.controller.auth_controller import AuthController
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter()
 
 @router.post("/register", response_model=UserResponse)
 async def register(user_in: UserRegister, db: AsyncSession = Depends(get_db)):
