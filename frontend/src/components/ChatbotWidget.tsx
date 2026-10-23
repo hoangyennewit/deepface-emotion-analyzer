@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Sparkles } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import { useLocation } from 'react-router-dom';
+import { MessageSquare, X, Send, Sparkles } from 'lucide-react';
 
 interface Message {
   id: number;
@@ -9,63 +7,14 @@ interface Message {
   sender: 'user' | 'ai';
 }
 
-const CHAT_STORAGE_KEY = 'emotionai-chat-messages';
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: 1,
-    text: 'Xin chào! Mình là trợ lý AI của EmotionAI. Mình có thể giúp gì cho bạn?',
-    sender: 'ai',
-  },
-];
-
-function isMessage(value: unknown): value is Message {
-  if (typeof value !== 'object' || value === null) return false;
-  const message = value as Record<string, unknown>;
-  return (
-    (typeof message.id === 'number' || typeof message.id === 'string') &&
-    typeof message.text === 'string' &&
-    (message.sender === 'user' || message.sender === 'ai')
-  );
-}
-
-function loadChatMessages(): { messages: Message[]; error: string | null } {
-  try {
-    const stored = window.localStorage.getItem(CHAT_STORAGE_KEY);
-    if (stored === null) return { messages: INITIAL_MESSAGES, error: null };
-
-    const parsed: unknown = JSON.parse(stored);
-    if (!Array.isArray(parsed) || !parsed.every(isMessage)) {
-      throw new Error('Dữ liệu hội thoại đã lưu không hợp lệ.');
-    }
-    return { messages: parsed, error: null };
-  } catch (error) {
-    console.error('Không thể khôi phục hội thoại chatbot từ trình duyệt.', error);
-    return {
-      messages: INITIAL_MESSAGES,
-      error: 'Không thể đọc hội thoại đã lưu trên trình duyệt.',
-    };
-  }
-}
-
 export const ChatbotWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const location = useLocation();
-  const [initialChat] = useState(loadChatMessages);
-  const [messages, setMessages] = useState<Message[]>(initialChat.messages);
-  const [storageError, setStorageError] = useState<string | null>(initialChat.error);
+  const [messages, setMessages] = useState<Message[]>([
+    { id: 1, text: 'Xin chào! Mình là trợ lý AI của EmotionAI. Mình có thể giúp gì cho bạn?', sender: 'ai' }
+  ]);
   const [inputValue, setInputValue] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
-      setStorageError(null);
-    } catch (error) {
-      console.error('Không thể lưu hội thoại chatbot vào trình duyệt.', error);
-      setStorageError('Không thể lưu hội thoại trên trình duyệt này.');
-    }
-  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -77,60 +26,27 @@ export const ChatbotWidget: React.FC = () => {
     }
   }, [messages, isOpen]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    const message = inputValue.trim();
-    if (!message) return;
+    if (!inputValue.trim()) return;
 
-    const historyDetailMatch = location.pathname.match(/^\/history\/([^/]+)\/?$/);
-    const sessionId = historyDetailMatch?.[1];
-    const requestBody = {
-      mode: 'dashboard',
-      message,
-      ...(sessionId
-        ? { session_id: sessionId }
-        : { source_type: 'all', limit: 20 }),
+    const newUserMsg: Message = {
+      id: Date.now(),
+      text: inputValue,
+      sender: 'user',
     };
 
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now(), text: message, sender: "user" },
-    ]);
-    setInputValue("");
+    setMessages((prev) => [...prev, newUserMsg]);
+    setInputValue('');
 
-    try {
-      const response = await fetch("http://127.0.0.1:8000/chat/emotion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : `Yêu cầu thất bại (HTTP ${response.status})`,
-        );
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now(), text: data.answer, sender: "ai" },
-      ]);
-    } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          text: error instanceof Error
-            ? `Không thể nhận phản hồi từ chatbot: ${error.message}`
-            : "Không thể kết nối đến chatbot.",
-          sender: "ai",
-        },
-      ]);
-    }
+    setTimeout(() => {
+      const aiResponse: Message = {
+        id: Date.now() + 1,
+        text: 'Chức năng giải đáp thông minh đang được team phát triển thêm. Hiện tại bạn có thể trải nghiệm tính năng nhận diện cảm xúc qua Webcam nhé!',
+        sender: 'ai',
+      };
+      setMessages((prev) => [...prev, aiResponse]);
+    }, 1000);
   };
 
   return (
@@ -167,11 +83,6 @@ export const ChatbotWidget: React.FC = () => {
 
           {/* Nội dung tin nhắn */}
           <div className="h-80 sm:h-96 p-4 overflow-y-auto bg-slate-50 flex flex-col gap-4">
-            {storageError && (
-              <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                {storageError}
-              </p>
-            )}
             {messages.map((msg) => (
               <div 
                 key={msg.id} 
@@ -183,16 +94,12 @@ export const ChatbotWidget: React.FC = () => {
                   </div>
                 )}
                 
-                <div className={`${
+                <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
                   msg.sender === 'user' 
-                    ? 'max-w-[75%] rounded-2xl rounded-tr-sm bg-blue-600 px-4 py-2.5 text-sm text-white shadow-sm whitespace-pre-wrap'
-                    : 'max-w-[88%] rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'
+                    ? 'bg-blue-600 text-white rounded-tr-sm' 
+                    : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'
                 }`}>
-                  {msg.sender === 'ai' ? (
-                    <div className="space-y-2 leading-relaxed [&>h1]:text-base [&>h1]:font-bold [&>h1]:text-slate-900 [&>h2]:text-base [&>h2]:font-bold [&>h2]:text-slate-900 [&>h3]:text-sm [&>h3]:font-bold [&>h3]:text-blue-900 [&>p]:my-2 [&>ul]:my-2 [&>ul]:list-disc [&>ul]:space-y-1 [&>ul]:pl-5 [&>ol]:my-2 [&>ol]:list-decimal [&>ol]:space-y-1 [&>ol]:pl-5 [&_strong]:font-semibold [&_strong]:text-slate-900 [&_em]:italic [&_blockquote]:my-3 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:rounded-r-lg [&_blockquote]:bg-blue-50 [&_blockquote]:px-3 [&_blockquote]:py-2 [&_blockquote_p]:my-1 [&_hr]:my-3 [&_hr]:border-slate-200">
-                      <ReactMarkdown>{msg.text}</ReactMarkdown>
-                    </div>
-                  ) : msg.text}
+                  {msg.text}
                   {msg.sender === 'ai' && (
                     <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1">
                       <Sparkles size={10} /> Trả lời bởi AI

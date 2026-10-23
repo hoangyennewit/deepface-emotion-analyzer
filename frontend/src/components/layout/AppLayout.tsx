@@ -1,22 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useMatch } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { getUserProfile, type UserProfile } from '../../services/api';
-import { ChatbotWidget } from '../ChatbotWidget';
 
 const navItems = [
   { path: '/', label: 'Trang chủ', icon: '🏠' },
   { path: '/image-analysis', label: 'Phân tích ảnh', icon: '🖼️' },
   { path: '/video-analysis', label: 'Phân tích video', icon: '🎥' },
   { path: '/webcam-analysis', label: 'Phân tích WebCam', icon: '📹' },
-  { path: '/history', label: 'Thống kê', icon: '📊' },
+  { path: '/history', label: 'Lịch sử', icon: '🕒' },
   { path: '/settings', label: 'Cài đặt', icon: '⚙️' },
 ];
 
 export const AppLayout: React.FC = () => {
   const location = useLocation();
-  const isHistoryListPage = useMatch('/history');
-  const isHistoryDetailPage = useMatch('/history/:id');
-  const isHistoryPage = Boolean(isHistoryListPage || isHistoryDetailPage);
   const [profile, setProfile] = useState<UserProfile>({
     name: 'Nguyễn Văn A',
     email: 'nguyenvana@gmail.com',
@@ -180,7 +176,6 @@ export const AppLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
-      {isHistoryPage && <ChatbotWidget />}
     </div>
   );
 };

@@ -131,7 +131,7 @@ export const HistoryPage: React.FC = () => {
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#0F254A" }}>Thống kê</h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#0F254A" }}>Lịch sử phân tích</h1>
         <button
           onClick={refresh}
           disabled={loading}

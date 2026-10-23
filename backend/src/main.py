@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -12,7 +13,6 @@ from src.services.media_storage import MEDIA_ROOT
 from src.models.analysis_session import AnalysisSession  # noqa: F401
 from src.models.face_analysic import FaceAnalysis  # noqa: F401
 from src.db.base import Base
-from src.db.migrations import ensure_analysis_session_media_columns
 from src.db.session import engine
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -22,13 +22,36 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await ensure_analysis_session_media_columns(conn)
+
+    # Nạp sẵn model MediaPipe cho webcam ở luồng nền để request đầu tiên
+    # không phải chờ (lần chạy đầu còn tải model ~3.7 MB). Lỗi model không
+    # được làm sập server.
+    warmup_task = None
+    try:
+        from src.services.webcam_analyzer import warmup_webcam_analyzer
+
+        warmup_task = asyncio.create_task(
+            asyncio.to_thread(warmup_webcam_analyzer)
+        )
+        # Giữ tham chiếu để task không bị garbage collector thu hồi.
+        app.state.warmup_task = warmup_task
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Không nạp được model webcam, sẽ thử lại ở request đầu tiên"
+        )
+
     yield
+
+    if warmup_task is not None:
+        warmup_task.cancel()
 
 
 app = FastAPI(
     title="Emotion Analysis API",
-    description="API for facial expression analysis using DeepFace",
+    description=(
+        "API phân tích cảm xúc khuôn mặt (DeepFace cho ảnh/video, "
+        "MediaPipe cho webcam thời gian thực)"
+    ),
     version="1.0.0",
     lifespan=lifespan,
 )
