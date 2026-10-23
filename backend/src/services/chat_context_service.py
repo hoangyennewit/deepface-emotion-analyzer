@@ -62,13 +62,14 @@ def _dominant_emotion(emotions: dict[str, float]) -> str | None:
 def summarize_faces(faces: Iterable[Any]) -> dict[str, Any]:
     """Tính thống kê bằng Python thay vì yêu cầu Gemini tự tính.
 
-    Các phần trăm được tính trên những bản ghi có nhãn dominant_emotion hợp lệ.
-    Điểm emotion_scores được lấy trung bình trên các bản ghi có điểm tương ứng.
+    dominant_percent đếm nhãn chủ đạo; emotion_score_percent chuẩn hóa tổng điểm
+    DeepFace, cùng cơ sở với tỷ lệ cảm xúc hiển thị trong lịch sử.
     """
     rows = list(faces)
     dominant_counts: Counter[str] = Counter()
     score_sum: dict[str, float] = defaultdict(float)
     score_count: Counter[str] = Counter()
+    scored_observations = 0
     timeline: list[dict[str, Any]] = []
 
     for row in rows:
@@ -78,6 +79,7 @@ def summarize_faces(faces: Iterable[Any]) -> dict[str, Any]:
             dominant_counts[label] += 1
 
         scores = getattr(row, "emotion_scores", None) or {}
+        has_scores = False
         if isinstance(scores, dict):
             for name, value in scores.items():
                 numeric = _number(value)
@@ -88,6 +90,9 @@ def summarize_faces(faces: Iterable[Any]) -> dict[str, Any]:
                     continue
                 score_sum[emotion_name] += numeric
                 score_count[emotion_name] += 1
+                has_scores = True
+        if has_scores:
+            scored_observations += 1
 
         timeline_item: dict[str, Any] = {}
         timestamp = _number(getattr(row, "timestamp", None))
@@ -103,9 +108,11 @@ def summarize_faces(faces: Iterable[Any]) -> dict[str, Any]:
 
     sampled_timeline = _sample_evenly(timeline, MAX_TIMELINE_SAMPLES)
     labelled_observations = sum(dominant_counts.values())
+    total_emotion_score = sum(score_sum.values())
 
     return {
         "face_observations": len(rows),
+        "scored_observations": scored_observations,
         "labelled_observations": labelled_observations,
         "dominant_counts": dict(dominant_counts),
         "dominant_percent": {
@@ -117,6 +124,11 @@ def summarize_faces(faces: Iterable[Any]) -> dict[str, Any]:
             for name, total in score_sum.items()
             if score_count[name]
         },
+        "emotion_score_percent": {
+            name: round(total * 100 / total_emotion_score, 2)
+            for name, total in score_sum.items()
+        } if total_emotion_score else {},
+        "emotion_score_totals": dict(score_sum),
         "timeline_samples": sampled_timeline,
         "timeline_is_sampled": len(timeline) > MAX_TIMELINE_SAMPLES,
     }
@@ -189,18 +201,25 @@ def build_live_context(
         analysis_data.get("total_faces", analysis_data.get("totalFaces"))
     )
     raw_unit = analysis_data.get(
-        "summary_unit", analysis_data.get("summaryUnit", "unknown")
+        "emotion_summary_unit",
+        analysis_data.get("summary_unit", analysis_data.get(
+            "emotionSummaryUnit", analysis_data.get("summaryUnit", "unknown")
+        )),
     )
     summary_unit = str(raw_unit or "unknown").strip().lower()
+    raw_basis = analysis_data.get(
+        "emotion_summary_basis",
+        analysis_data.get("emotionSummaryBasis"),
+    )
+    summary_basis = str(raw_basis).strip() if raw_basis else None
 
     if not summary and not timeline_samples and processed_frames is None and total_faces is None:
         return None
 
-    # Chỉ tính phần trăm khi nguồn dữ liệu xác nhận emotion_summary là số đếm.
-    # Không dùng processed_frames hoặc total_faces làm mẫu số thay thế.
+    # Percentages supplied by the analyzer are authoritative; counts are normalized here.
     count_units = {"count", "counts", "observation_count", "observations"}
     summary_total = round(sum(summary.values()), 3) if summary_unit in count_units else None
-    summary_percent = (
+    summary_percent = dict(summary) if summary_unit in {"percent", "percentage", "pct"} else (
         {
             label: round(value * 100 / summary_total, 2)
             for label, value in summary.items()
@@ -219,6 +238,7 @@ def build_live_context(
         "emotion_summary_unit": summary_unit,
         "emotion_summary_total": summary_total,
         "emotion_summary_percent": summary_percent,
+        "emotion_summary_basis": summary_basis,
         "timeline_samples": timeline_samples,
         "data_origin": "live_webcam_deepface_pipeline",
         "note": (
@@ -272,6 +292,7 @@ async def build_dashboard_context(
 
     session_details: list[dict[str, Any]] = []
     combined_dominant_counts: Counter[str] = Counter()
+    combined_emotion_score_totals: dict[str, float] = defaultdict(float)
 
     for session in sessions:
         face_rows = await get_face_analyses_by_session(
@@ -280,6 +301,8 @@ async def build_dashboard_context(
         )
         statistics = summarize_faces(face_rows)
         combined_dominant_counts.update(statistics["dominant_counts"])
+        for label, total in statistics.pop("emotion_score_totals").items():
+            combined_emotion_score_totals[label] += total
 
         session_details.append({
             "session_id": str(session.id),
@@ -291,6 +314,16 @@ async def build_dashboard_context(
             "statistics": statistics,
         })
 
+    combined_score_total = sum(combined_emotion_score_totals.values())
+    combined_emotion_score_percent = (
+        {
+            label: round(total * 100 / combined_score_total, 2)
+            for label, total in combined_emotion_score_totals.items()
+        }
+        if combined_score_total
+        else {}
+    )
+
     return {
         "mode": "dashboard",
         "scope": "one_session" if session_id is not None else "recent_sessions",
@@ -299,6 +332,8 @@ async def build_dashboard_context(
         "max_sessions_requested": 1 if session_id is not None else limit,
         "not_all_database_history": session_id is None,
         "combined_dominant_counts": dict(combined_dominant_counts),
+        "combined_emotion_score_percent": combined_emotion_score_percent,
+        "emotion_score_basis": "share_of_aggregate_deepface_scores",
         "sessions": session_details,
         "note": (
             "Thống kê được tính từ các bản ghi FaceAnalysis đã truy xuất. "

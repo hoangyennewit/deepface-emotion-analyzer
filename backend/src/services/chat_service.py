@@ -127,6 +127,17 @@ def _build_video_context(analysis_data: dict[str, Any]) -> dict[str, Any]:
         for k, v in summary.items()
         if _is_valid_number(v) and float(v) >= 0
     }
+    summary_unit = str(
+        analysis_data.get("emotion_summary_unit")
+        or analysis_data.get("summary_unit")
+        or analysis_data.get("emotionSummaryUnit")
+        or analysis_data.get("summaryUnit")
+        or "unknown"
+    ).strip().lower()
+    summary_basis = (
+        analysis_data.get("emotion_summary_basis")
+        or analysis_data.get("emotionSummaryBasis")
+    )
 
     # 2. Xử lý Faces bằng Pydantic (Rút gọn hoàn toàn)
     raw_faces = analysis_data.get("faces") or []
@@ -187,7 +198,12 @@ def _build_video_context(analysis_data: dict[str, Any]) -> dict[str, Any]:
         "processed_frames": processed_frames,
         "total_faces": total_faces,
         "emotion_summary": clean_summary,
-        "summary_unit": analysis_data.get("summary_unit") or analysis_data.get("summaryUnit", "unknown"),
+        "emotion_summary_unit": summary_unit,
+        "emotion_summary_percent": (
+            clean_summary if summary_unit in {"percent", "percentage", "pct"} else None
+        ),
+        "emotion_summary_basis": summary_basis,
+        "summary_unit": summary_unit,
         "face_samples": face_samples,
         "face_samples_are_limited": len(raw_faces) > MAX_VIDEO_FACE_SAMPLES,
         "timeline_samples": timeline_samples,
@@ -298,4 +314,3 @@ async def ask_emotion_chatbot(
         "input_type": ai_result.get("input_type", "text"),
         "scope": context_scope,
     }
-

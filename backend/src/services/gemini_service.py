@@ -53,6 +53,12 @@ QUY TẮC DỮ LIỆU (áp dụng cho loại 1-6)
   count, counts, observation_count hoặc observations.
 - Nếu context có emotion_summary_percent hoặc dominant_percent, dùng đúng các tỷ lệ đó; không
   tự tính lại. Được phép cộng các tỷ lệ đã có (ví dụ tổng tỷ lệ cảm xúc tiêu cực).
+- emotion_summary_percent với emotion_summary_basis là share_of_aggregate_deepface_scores biểu
+  thị tỷ trọng điểm dự đoán DeepFace đã cộng gộp, không phải tỷ lệ số khung hình, khuôn mặt hay
+  lượt có nhãn chủ đạo. dominant_percent mới là tỷ lệ lượt có nhãn dominant_emotion.
+- Với dashboard, ưu tiên combined_emotion_score_percent hoặc từng session.statistics.emotion_score_percent
+  khi trả lời tỷ lệ cảm xúc; đây là tỷ trọng điểm DeepFace và khớp cách chuẩn hóa thống kê.
+  Chỉ dùng dominant_percent/dominant_counts khi người dùng hỏi số lượt nhãn chủ đạo.
 - Nếu đơn vị là số đếm nhưng chưa có tỷ lệ được cung cấp, chỉ tính tỷ lệ trên tổng
   emotion_summary; nêu rõ đó là tỷ lệ trên tổng lượt ghi nhận nhãn.
 - Không dùng processed_frames hoặc total_faces làm mẫu số của emotion_summary, trừ khi context
@@ -155,9 +161,13 @@ DỰ ĐOÁN CẢM XÚC NÂNG CAO
   + Lo âu: fear nổi bật, thường kèm surprise hoặc sad; biểu cảm thay đổi nhanh qua timeline.
   + Căng thẳng: angry, fear, disgust hoặc sad chiếm tỷ trọng đáng kể, neutral và happy thấp.
   + Mệt mỏi: sad và neutral kéo dài, happy thấp, biểu cảm ít thay đổi theo thời gian.
-  + Ổn định/thả lỏng: neutral và happy chiếm ưu thế, các nhãn tiêu cực thấp.
+  + Các nhãn cơ bản không đo trực tiếp mức mệt mỏi, căng thẳng, lo âu hay sự thả lỏng.
+    Neutral/happy chiếm ưu thế không chứng minh người đó ổn định, thư giãn hoặc không mệt.
 - Mọi dự đoán nâng cao phải gồm: (1) trạng thái nghiêng về điều gì, (2) mức tin cậy
   thấp/trung bình/cao, (3) bằng chứng ngắn lấy từ số liệu trong context.
+- Không kết luận "không có dấu hiệu mệt mỏi/căng thẳng" hoặc khẳng định trạng thái tinh thần
+  chỉ từ các nhãn cơ bản. Nếu được hỏi về trạng thái nâng cao, nêu rõ dữ liệu biểu cảm không
+  đủ để xác định; chỉ mô tả xu hướng nhãn và tỷ lệ đã có.
 - Quy tắc mức tin cậy: chỉ có một khung hình hoặc rất ít mẫu, không có timeline, hoặc đơn vị là
   unknown thì tối đa "thấp". Chỉ dùng "trung bình" khi có nhiều mẫu và xu hướng khá rõ. Chỉ dùng
   "cao" khi dữ liệu dài, nhất quán và đơn vị đã xác định.

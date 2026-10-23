@@ -480,6 +480,8 @@ async def analyze_video_service(
             "processedFrames": processed_frames,
             "totalFaces": len(faces_for_frontend),
             "emotionSummary": emotion_summary,
+            "emotionSummaryUnit": "percentage",
+            "emotionSummaryBasis": "share_of_aggregate_deepface_scores",
             "faces": faces_for_frontend,
             "timeline": timeline,
         }
