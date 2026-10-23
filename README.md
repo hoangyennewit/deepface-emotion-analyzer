@@ -62,6 +62,8 @@ pip install -r backend/requirements.txt
 - `mediapipe`: Phân tích khuôn mặt realtime cho webcam (landmark, blendshape, góc đầu).
 - `python-multipart`: Đọc và xử lý luồng upload file multipart/form-data (ảnh, video).
 - `sqlalchemy[asyncio]` & `asyncpg`: Thao tác cơ sở dữ liệu bất đồng bộ với PostgreSQL.
+- `passlib`, `bcrypt` và `python-jose`: Mã hóa mật khẩu và tạo/xác thực JWT; `bcrypt` được ghim ở phiên bản tương thích với Passlib.
+- `email-validator`: Kiểm tra địa chỉ email khi đăng ký.
 - `opencv-python`: Đọc và xử lý ảnh/video.
 
 Cấu hình PostgreSQL và file môi trường backend:
@@ -84,7 +86,6 @@ Di chuyển vào thư mục frontend và cài đặt dependencies:
 ```bash
 cd frontend
 npm install
-npm install react-router-dom
 ```
 
 Cấu hình file môi trường frontend:
@@ -94,6 +95,16 @@ Cấu hình file môi trường frontend:
   VITE_API_URL=http://127.0.0.1:8000
   ```
 - Frontend dùng chung URL này cho các API; nếu thay đổi `.env`, hãy khởi động lại Vite.
+
+---
+
+### 3. Đăng ký và đăng nhập
+
+- Khi chưa đăng nhập, mở trang chủ hoặc trang chức năng sẽ được chuyển đến `/login`. Có thể mở `/register` để tạo tài khoản.
+- Mật khẩu đăng ký phải có ít nhất 8 ký tự, bao gồm ít nhất 1 chữ cái, 1 chữ số và 1 ký tự đặc biệt. Giao diện hiển thị từng điều kiện; backend cũng kiểm tra lại trước khi lưu.
+- Sau khi đăng ký thành công, đăng nhập bằng email và mật khẩu. Backend trả JWT có thời hạn 24 giờ; frontend lưu token trong `sessionStorage` và dùng khi gọi các API hồ sơ được bảo vệ.
+- Đăng xuất trong trang Cài đặt sẽ xóa token khỏi phiên trình duyệt. Mở trình duyệt/phiên mới có thể cần đăng nhập lại.
+- Backend tạo bảng `users` theo model khi khởi động. File `data/02_database_schema.sql` cũng có DDL tương ứng nếu cần tạo bảng thủ công. Dự án hiện khởi tạo schema bằng SQLAlchemy `create_all()`; không dùng Alembic.
 
 ---
 
@@ -141,9 +152,11 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 
 ## 🧭 III. KIẾN TRÚC TRANG FRONTEND
 
-- `/webcam`: Phân tích biểu cảm webcam trực tiếp theo thời gian thực (đọc từng khung hình canvas định dạng JPEG đẩy lên server).
-- `/video`: Tải lên và phân tích video đồng bộ.
-- `/history`: Lịch sử các phiên phân tích kèm chi tiết độ tin cậy và phân bổ cảm xúc.
+- `/login`, `/register`: Đăng nhập và tạo tài khoản.
+- `/image-analysis`, `/video-analysis`, `/webcam-analysis`: Phân tích ảnh, video đồng bộ và webcam realtime.
+- `/history`: Danh sách và chi tiết lịch sử phân tích.
+- `/settings`: Hồ sơ tài khoản và các cài đặt hệ thống.
+- Các trang chức năng được bảo vệ ở frontend: chưa có token đăng nhập thì sẽ chuyển tới `/login`. API hồ sơ cũng tự xác thực JWT ở backend; các API phân tích và lịch sử hiện chưa yêu cầu JWT.
 
 ---
 
@@ -159,14 +172,14 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
 | `POST` | `/emotion/webcam` | `multipart/form-data` (`file`) | Phân tích một frame webcam: cảm xúc + trạng thái (tập trung/mất tập trung/mệt mỏi/bối rối) |
 | `POST` | `/emotion/video` | `multipart/form-data` (`file`) | Phân tích video đồng bộ; request chờ đến khi xử lý xong |
 | `POST` | `/chat/emotion` | JSON: `mode`, `message` và dữ liệu tùy chọn theo chế độ | Hỏi AI về biểu cảm ở chế độ live, video hoặc dashboard |
-| `GET` | `/emotion/history?type=all` | Query `type`: `all`, `image` hoặc `video` | Danh sách lịch sử phân tích |
+| `GET` | `/emotion/history?type=all` | Query `type`: `all`, `image`, `video` hoặc `webcam` | Danh sách lịch sử phân tích |
 | `GET` | `/emotion/history/{session_id}` | Path param: UUID `session_id` | Xem chi tiết một bản ghi phân tích |
 | `DELETE` | `/emotion/history/{session_id}` | Path param: UUID `session_id` | Xóa bản ghi lịch sử phân tích |
 | `POST` | `/upload/image` | `multipart/form-data`: `file`, `save_file` (mặc định `false`) | Nhận ảnh; lưu bền vững khi `save_file=true` |
 | `POST` | `/upload/video` | `multipart/form-data`: `file`, `save_file` (mặc định `false`) | Nhận video; lưu bền vững khi `save_file=true` |
-| `GET` | `/user/profile` | Không | Lấy hồ sơ mẫu |
-| `PUT` | `/user/profile` | JSON: `name`, `email`, `avatar` (tùy chọn) | Cập nhật hồ sơ mẫu |
-| `POST` | `/user/change-password` | JSON: `old_password`, `new_password` | Endpoint minh họa đổi mật khẩu |
+| `GET` | `/user/profile` | JWT của phiên đăng nhập | Lấy hồ sơ của tài khoản đang đăng nhập |
+| `PUT` | `/user/profile` | JWT của phiên đăng nhập; JSON: `name`, `email` (tùy chọn) | Cập nhật hồ sơ tài khoản hiện tại |
+| `POST` | `/user/change-password` | JWT của phiên đăng nhập; JSON: `old_password`, `new_password` | Kiểm tra mật khẩu hiện tại và đổi sang mật khẩu mới đạt chính sách |
 | `GET` | `/settings/` | Không | Lấy cài đặt hệ thống |
 | `POST` | `/settings/` | JSON: các trường cài đặt (tùy chọn) | Cập nhật cài đặt hệ thống |
 | `GET` | `/settings/webcam` | Không | Lấy cài đặt webcam |
@@ -198,21 +211,29 @@ Cần mở **2 cửa sổ Terminal** riêng biệt tại thư mục gốc `Proje
   python -m src.services.webcam_analyzer
   ```
   Chi tiết thuật toán: [`docs/27_webcam_realtime_mediapipe.md`](docs/27_webcam_realtime_mediapipe.md).
-- Lịch sử ảnh/video được truy vấn, xem chi tiết và xóa qua `/emotion/history`; `type` nhận `all`, `image` hoặc `video`.
+- Lịch sử ảnh/video/webcam được truy vấn, xem chi tiết và xóa qua `/emotion/history`; `type` nhận `all`, `image`, `video` hoặc `webcam`.
 - Backend kết nối PostgreSQL bất đồng bộ bằng SQLAlchemy và `asyncpg`.
 
-### 4. Upload file
+### 4. Tài khoản, hồ sơ và cài đặt
+- `POST /auth/register` nhận JSON gồm `email`, `password` và `full_name` tùy chọn. Email phải hợp lệ; mật khẩu phải đạt yêu cầu tối thiểu 8 ký tự, có chữ cái, chữ số và ký tự đặc biệt.
+- `POST /auth/login` nhận form URL-encoded với `username` (điền email) và `password`, trả `access_token` dạng JWT.
+- `GET`, `PUT /user/profile` yêu cầu gửi JWT trong header `Authorization`. Hồ sơ được đọc/cập nhật theo user ID bên trong JWT, không dùng chung dữ liệu hồ sơ mẫu.
+- `POST /user/change-password` yêu cầu bearer token, `old_password` và `new_password`. Mật khẩu hiện tại phải chính xác và mật khẩu mới phải đạt cùng chính sách mạnh như lúc đăng ký.
+- Màn hình Cài đặt hiện tải và cập nhật tên/email từ hồ sơ tài khoản thật. Avatar và vai trò chưa được lưu trong bảng `users`; API trả avatar rỗng và vai trò mặc định `User`.
+- Các endpoint `/settings/` và `/settings/webcam` hiện vẫn lưu cài đặt mẫu trong bộ nhớ tiến trình; chúng không phải cài đặt riêng theo tài khoản và sẽ trở về mặc định khi backend khởi động lại. Nút đổi mật khẩu trên giao diện Cài đặt chưa được nối với endpoint đổi mật khẩu.
+
+### 5. Upload file
 - Các endpoint `/upload/image` và `/upload/video` nhận field `file` cùng `save_file`.
 - Khi `save_file=true`, file được lưu dưới `outputs/uploads/images` hoặc `outputs/uploads/videos`; khi `false`, API không lưu ảnh lâu dài và video được ghi vào file tạm.
 - `/chat/emotion` nhận `mode` là `live`, `video` hoặc `dashboard`. Chế độ `live` cần `analysis_data`; `dashboard` có thể nhận `session_id`, `source_type` và `limit`; `video` cần `video_file_id` từ kết quả upload video đã lưu (`save_file=true`), có thể kèm `session_id` để dùng kết quả DeepFace của phiên.
 - Mọi chế độ đều nhận `message`. Chế độ live có thể cấu hình `window_seconds` (1–300). API chỉ nhận mã file video, không nhận đường dẫn hệ thống từ client.
 
-### 5. Kiểm tra chatbot Dashboard với lịch sử thống kê cảm xúc
+### 6. Kiểm tra chatbot Dashboard với lịch sử thống kê cảm xúc
 
 Chế độ `dashboard` hỏi chatbot dựa trên các kết quả phân tích đã lưu trong database. Khi muốn hỏi về một phiên cụ thể, chỉ cần gửi `session_id`; không cần sao chép toàn bộ JSON lịch sử hoặc upload video lại.
 
 1. Khởi động backend và mở Swagger tại `http://127.0.0.1:8000/docs`.
-2. Mở `GET /emotion/history?type=all`, chọn **Try it out** rồi **Execute**. Có thể dùng `type=image` hoặc `type=video` để lọc; API lịch sử hiện chưa hỗ trợ lọc riêng `webcam`, nên chọn `all` rồi tìm bản ghi có `"type": "webcam"`.
+2. Mở `GET /emotion/history?type=all`, chọn **Try it out** rồi **Execute**. Có thể lọc theo `image`, `video` hoặc `webcam`.
 3. Trong kết quả, sao chép giá trị `"id"` của phiên muốn hỏi. Đây là `session_id`. Kiểm tra `"status": "completed"` để chọn phiên đã phân tích xong.
 4. Mở `POST /chat/emotion`, chọn **Try it out** và gửi JSON. Thay UUID ví dụ bằng `"id"` vừa sao chép:
 
@@ -243,7 +264,7 @@ Nếu muốn chatbot tổng hợp nhiều phiên gần nhất thay vì hỏi m�
 
 Đảm bảo đã cấu hình `GEMINI_API_KEY` trong `backend/.env` và có dữ liệu lịch sử trong database. Nếu `session_id` không tồn tại, API trả `404`; nếu database chưa có phiên phù hợp, API cũng không thể tạo thống kê cho chatbot. Chế độ Dashboard gửi thống kê đã lưu cho Gemini dưới dạng văn bản; khác với `mode: "video"`, chế độ này không upload video gốc lên Gemini để phân tích.
 
-> Các endpoint hồ sơ người dùng và cài đặt hiện lưu dữ liệu mẫu trong bộ nhớ tiến trình, không phải cơ chế xác thực hay lưu trữ bền vững.
+> Các nhãn cảm xúc lưu trong dữ liệu dùng mã tiếng Anh chuẩn như `neutral`; nội dung chatbot hiển thị `neutral` là “Bình thường”.
 
 ---
 
