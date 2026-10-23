@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: emotion_postgres
+
+    environment:
+      POSTGRES_DB: emotion_analysis_db
+      POSTGRES_USER: DTY
+      POSTGRES_PASSWORD: 24102026
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    restart: unless-stopped
+
+
+volumes:
+  postgres_data:
