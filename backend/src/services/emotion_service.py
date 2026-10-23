@@ -44,6 +44,10 @@ from src.repositories.analysis_repository import (
 )
 from src.schemas.webcam_session_schema import WebcamSessionPayload
 from src.services.media_storage import MediaPayload, delete_session_media, store_media
+from src.services.webcam_analyzer import (
+    MediaPipeUnavailableError,
+    analyze_webcam_frame,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +93,31 @@ def _bbox_to_dict(bbox: Any) -> dict[str, float] | None:
         }
 
     return None
+
+
+def _webcam_face_payload(face: dict[str, Any]) -> dict[str, Any]:
+    """Chuẩn hoá kết quả webcam về đúng response frontend đang dùng.
+
+    MediaPipe trả thêm ``state`` (trạng thái học tập) và các chỉ số
+    ``attention``/``fatigue``; nhánh dự phòng DeepFace chỉ có cảm xúc nên các
+    trường mới được điền giá trị mặc định.
+    """
+    return {
+        "track_id": face.get("track_id"),
+        "dominate_emotion": str(
+            face.get("dominate_emotion")
+            or face.get("dominant_emotion")
+            or "neutral"
+        ),
+        "confidence": float(face.get("confidence", 0.0)),
+        "emotion": face.get("emotion") or {},
+        "bbox": face.get("bbox"),
+        "state": str(face.get("state", "focused")),
+        "state_label": str(face.get("state_label", "Tập trung")),
+        "attention": float(face.get("attention", 50.0)),
+        "fatigue": float(face.get("fatigue", 0.0)),
+        "is_yawning": bool(face.get("is_yawning", False)),
+    }
 
 
 def _build_face_record(
@@ -473,9 +502,11 @@ async def analyze_webcam_service(
     file: UploadFile,
 ) -> dict[str, Any]:
     """
-    Phân tích một frame webcam bằng thuật toán CŨ
-    (OpenCV + RetinaFace dự phòng).
-    Tạm thời không lưu Repository/PostgreSQL.
+    Phân tích một frame webcam theo thời gian thực (không lưu DB).
+
+    Mặc định dùng MediaPipe FaceLandmarker trong ``webcam_analyzer.py``
+    (~15 - 30 ms/khung, có tracking và trạng thái học tập). Nếu máy chưa cài
+    ``mediapipe``, service tự quay về DeepFace như trước để không gián đoạn.
     """
     validate_image_upload(
         file.content_type,
@@ -484,24 +515,48 @@ async def analyze_webcam_service(
 
     image_bytes = await read_image_upload(file)
 
-    faces = await asyncio.to_thread(
-        analyze_webcam_image,
-        image_bytes,
+    try:
+        faces = await asyncio.to_thread(
+            analyze_webcam_frame,
+            image_bytes,
+        )
+        engine = "mediapipe"
+    except MediaPipeUnavailableError:
+        logger.warning(
+            "Chưa cài mediapipe, tạm dùng DeepFace cho webcam. "
+            "Cài bằng: pip install -r backend/requirements.txt"
+        )
+        faces = await asyncio.to_thread(
+            analyze_webcam_image,
+            image_bytes,
+        )
+        engine = "deepface"
+
+    payload = [_webcam_face_payload(face) for face in faces]
+
+    counts = {key: 0 for key in ("focused", "distracted", "tired", "confused")}
+    for face in payload:
+        state = face["state"]
+        counts[state] = counts.get(state, 0) + 1
+
+    attention = (
+        sum(face["attention"] for face in payload) / len(payload) if payload else 0.0
+    )
+    fatigue = (
+        sum(face["fatigue"] for face in payload) / len(payload) if payload else 0.0
     )
 
     return {
         "success": True,
-        "total_faces": len(faces),
-        "faces": [
-            {
-                "track_id": face.get("track_id"),
-                "dominate_emotion": face["dominate_emotion"],
-                "confidence": face["confidence"],
-                "emotion": face["emotion"],
-                "bbox": face.get("bbox"),
-            }
-            for face in faces
-        ],
+        "engine": engine,
+        "total_faces": len(payload),
+        "faces": payload,
+        "summary": {
+            "states": counts,
+            "attention": round(attention, 1),
+            "fatigue": round(fatigue, 1),
+            "alert": counts["tired"] > 0 or counts["distracted"] > 0,
+        },
     }
 MAX_WEBCAM_VIDEO_BYTES = 500 * 1024 * 1024
 ALLOWED_WEBCAM_TYPES = {"video/webm", "video/mp4"}

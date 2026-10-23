@@ -35,6 +35,25 @@ const EMOTION_LABELS: Record<string, string> = {
   disgusted: 'Ghê tởm',
 };
 
+// Trạng thái giám sát lớp học do backend MediaPipe trả về
+const STATE_LABELS: Record<string, string> = {
+  focused: 'Tập trung',
+  distracted: 'Mất tập trung',
+  tired: 'Mệt mỏi',
+  confused: 'Bối rối',
+};
+
+const STATE_COLORS: Record<string, string> = {
+  focused: '#22C55E',
+  distracted: '#F59E0B',
+  tired: '#EF4444',
+  confused: '#8B5CF6',
+};
+
+// Backend mới chỉ mất ~15-30 ms/frame nên gửi dày hơn để phản hồi nhanh và
+// đủ mẫu cho các chỉ số buồn ngủ (PERCLOS, ngáp).
+const ANALYSIS_INTERVAL_MS = 400;
+
 const topEmotion = (scores: Record<string, number>): string =>
   Object.entries(scores).sort(([, a], [, b]) => b - a)[0]?.[0] ?? 'neutral';
 
@@ -57,6 +76,10 @@ interface LiveFace {
   dominant: string;
   scores: Record<string, number>;
   bbox: number[] | null;
+  state: string;
+  stateLabel: string;
+  attention: number; // 0..100
+  fatigue: number; // 0..100
 }
 
 export const WebcamAnalysisPage: React.FC = () => {
@@ -210,10 +233,15 @@ export const WebcamAnalysisPage: React.FC = () => {
             // Giữ lại TẤT CẢ khuôn mặt, không chỉ khuôn mặt đầu tiên
             const liveFaces: LiveFace[] = faces.map((f) => {
               const scores = f.emotion ?? {};
+              const state = f.state ?? 'focused';
               return {
                 dominant: topEmotion(scores),
                 scores,
                 bbox: Array.isArray(f.bbox) && f.bbox.length === 4 ? f.bbox : null,
+                state,
+                stateLabel: f.state_label ?? STATE_LABELS[state] ?? 'Tập trung',
+                attention: Number(f.attention ?? 50),
+                fatigue: Number(f.fatigue ?? 0),
               };
             });
             setFrameSize({ width: frameWidth, height: frameHeight });
@@ -232,7 +260,7 @@ export const WebcamAnalysisPage: React.FC = () => {
         'image/jpeg',
         0.8
       );
-    }, 1000);
+    }, ANALYSIS_INTERVAL_MS);
 
     return () => clearInterval(timer);
   }, [isStreaming, isDetecting, addSample]);
@@ -264,6 +292,17 @@ export const WebcamAnalysisPage: React.FC = () => {
     .sort((a, b) => (a.box?.left ?? Infinity) - (b.box?.left ?? Infinity));
 
   const multiple = shownFaces.length > 1;
+
+  const stateCounts = currentFaces.reduce<Record<string, number>>((acc, face) => {
+    acc[face.state] = (acc[face.state] ?? 0) + 1;
+    return acc;
+  }, {});
+  const avgAttention = currentFaces.length
+    ? Math.round(currentFaces.reduce((sum, f) => sum + f.attention, 0) / currentFaces.length)
+    : 0;
+  const avgFatigue = currentFaces.length
+    ? Math.round(currentFaces.reduce((sum, f) => sum + f.fatigue, 0) / currentFaces.length)
+    : 0;
 
   const avgScores = averageScores(currentFaces.map((f) => f.scores));
   const pieData = Object.entries(avgScores)
@@ -366,7 +405,8 @@ export const WebcamAnalysisPage: React.FC = () => {
               settings.show_face_box &&
               shownFaces.map(({ face, box }, index) => {
                 if (!box) return null;
-                const color = EMOTION_COLORS[face.dominant] || '#22C55E';
+                // Khung đổi màu theo trạng thái (tập trung/mất tập trung/mệt mỏi/bối rối)
+                const color = STATE_COLORS[face.state] || '#22C55E';
                 return (
                   <div
                     key={index}
@@ -398,7 +438,7 @@ export const WebcamAnalysisPage: React.FC = () => {
                       }}
                     >
                       {multiple ? `Người ${index + 1} · ` : ''}
-                      {EMOTION_LABELS[face.dominant] || face.dominant}{' '}
+                      {face.stateLabel} · {EMOTION_LABELS[face.dominant] || face.dominant}{' '}
                       {Math.round(face.scores[face.dominant] ?? 0)}%
                     </span>
                   </div>
@@ -531,6 +571,57 @@ export const WebcamAnalysisPage: React.FC = () => {
 
         {/* Right: Realtime Emotion Results & Pie Chart */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Card 0: Trạng thái giám sát lớp học */}
+          <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '24px', border: '1px solid #E2E8F0' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 700, color: '#0F254A' }}>
+              Trạng thái học tập{multiple ? ` (${currentFaces.length} người)` : ''}
+            </h3>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {(['focused', 'distracted', 'tired', 'confused'] as const).map((key) => (
+                <div
+                  key={key}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    backgroundColor: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '50%',
+                      backgroundColor: STATE_COLORS[key],
+                    }}
+                  />
+                  <span style={{ fontSize: '13px', color: '#334155', flex: 1 }}>{STATE_LABELS[key]}</span>
+                  <strong style={{ fontSize: '16px', color: '#0F254A' }}>{stateCounts[key] ?? 0}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '12px', display: 'flex', gap: '16px', fontSize: '12px', color: '#64748B' }}>
+              <span>
+                Chú ý TB:{' '}
+                <strong style={{ color: '#16A34A' }}>{avgAttention}%</strong>
+              </span>
+              <span>
+                Mệt mỏi TB:{' '}
+                <strong style={{ color: '#DC2626' }}>{avgFatigue}%</strong>
+              </span>
+            </div>
+
+            <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#94A3B8', lineHeight: 1.5 }}>
+              Trạng thái được suy ra từ hướng đầu, hướng mắt, độ mở mắt (PERCLOS) và ngáp —
+              phù hợp để giám sát mức độ tập trung của lớp.
+            </p>
+          </div>
+
           {/* Card 1: Kết quả hiện tại */}
           <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '24px', border: '1px solid #E2E8F0' }}>
             <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 700, color: '#0F254A' }}>
@@ -571,6 +662,19 @@ export const WebcamAnalysisPage: React.FC = () => {
                       </div>
 
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <span
+                          style={{
+                            alignSelf: 'flex-start',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: STATE_COLORS[face.state] || '#334155',
+                            border: `1px solid ${STATE_COLORS[face.state] || '#CBD5E1'}`,
+                            borderRadius: '999px',
+                            padding: '2px 10px',
+                          }}
+                        >
+                          {face.stateLabel}
+                        </span>
                         {scores.slice(0, 3).map(([em, val]) => (
                           <div key={em} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 35px', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '12px', color: EMOTION_COLORS[em] || '#64748B', fontWeight: 600 }}>
@@ -591,6 +695,40 @@ export const WebcamAnalysisPage: React.FC = () => {
                             </span>
                           </div>
                         ))}
+
+                        {/* Chỉ số hành vi phục vụ giám sát lớp học */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr 35px', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', color: '#64748B' }}>Chú ý</span>
+                          <div style={{ height: '4px', backgroundColor: '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div
+                              style={{
+                                height: '100%',
+                                width: `${Math.min(100, Math.max(0, face.attention))}%`,
+                                backgroundColor: '#22C55E',
+                                borderRadius: '4px',
+                              }}
+                            />
+                          </div>
+                          <span style={{ fontSize: '11px', color: '#64748B', textAlign: 'right' }}>
+                            {Math.round(face.attention)}%
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr 35px', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', color: '#64748B' }}>Mệt mỏi</span>
+                          <div style={{ height: '4px', backgroundColor: '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div
+                              style={{
+                                height: '100%',
+                                width: `${Math.min(100, Math.max(0, face.fatigue))}%`,
+                                backgroundColor: '#EF4444',
+                                borderRadius: '4px',
+                              }}
+                            />
+                          </div>
+                          <span style={{ fontSize: '11px', color: '#64748B', textAlign: 'right' }}>
+                            {Math.round(face.fatigue)}%
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
