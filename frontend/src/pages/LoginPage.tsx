@@ -1,167 +1,212 @@
-import { Eye, EyeOff, LockKeyhole, Mail, ScanFace } from "lucide-react";
-import { useState } from "react";
-import type { FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { login } from "../api/authApi";
+import React, { useState } from 'react';
+import { Mail, Lock, User, EyeOff, Eye, Brain, ArrowRight, UserPlus, ChevronRight, Smile, Meh, Frown } from 'lucide-react';
 
-export const LoginPage = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
+export const LoginPage: React.FC = () => {
+  const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const returnPath =
-    typeof location.state === "object" &&
-    location.state !== null &&
-    "from" in location.state &&
-    typeof location.state.from === "string" &&
-    location.state.from.startsWith("/")
-      ? location.state.from
-      : "/";
-  const registrationMessage =
-    typeof location.state === "object" &&
-    location.state !== null &&
-    "message" in location.state &&
-    typeof location.state.message === "string"
-      ? location.state.message
-      : "";
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError("");
-    setIsSubmitting(true);
-    try {
-      await login(email, password);
-      navigate(returnPath, { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể đăng nhập.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] px-5 py-8 text-[#0F254A] sm:px-8">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl items-center justify-center">
-        <div className="grid w-full overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-[0_20px_60px_rgba(15,37,74,0.1)] lg:grid-cols-[0.9fr_1.1fr]">
-          <section className="hidden bg-[#0F254A] p-12 text-white lg:flex lg:flex-col lg:justify-between">
-            <div>
-              <div className="mb-16 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#38BDF8] bg-[#1E3A8A] text-xl shadow-[0_0_16px_rgba(56,189,248,0.35)]">
-                  <ScanFace size={22} />
-                </div>
-                <div>
-                  <p className="text-lg font-extrabold">EmotionAI</p>
-                  <p className="text-xs text-[#93C5FD]">DeepFace Analyzer</p>
-                </div>
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#F4F7FF]">
+      {/* Background blobs trang trí */}
+      <div className="absolute top-[-10%] left-[-5%] w-96 h-96 bg-[#E0E7FF] rounded-full blur-[100px] opacity-60"></div>
+      <div className="absolute bottom-[-10%] right-[-5%] w-96 h-96 bg-[#E0E7FF] rounded-full blur-[100px] opacity-60"></div>
+
+      {/* Khung Card tổng */}
+      <div className="flex w-full max-w-[900px] bg-white rounded-[2rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)] overflow-hidden min-h-[600px] relative z-10 border border-white">
+        
+        {/* === CỘT TRÁI: Banner === */}
+        <div className="hidden md:flex flex-col w-[45%] bg-gradient-to-br from-[#E6ECFF] to-[#D6E0FF] p-10 relative overflow-hidden justify-between">
+          {/* Họa tiết nền */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-white opacity-20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+
+          <div className="relative z-10">
+            {/* Logo Header */}
+            <div className="flex items-center gap-3 mb-2">
+              <div className="text-blue-600">
+                 <Brain size={32} strokeWidth={2.5} />
               </div>
-              <p className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-[#93C5FD]">
-                Emotion intelligence
-              </p>
-              <h1 className="max-w-sm text-4xl font-extrabold leading-tight">
-                Hiểu cảm xúc qua từng khuôn mặt.
-              </h1>
-              <p className="mt-6 max-w-sm text-sm leading-7 text-[#CBD5E1]">
-                Phân tích hình ảnh, video và webcam trực tiếp trong một không gian làm việc rõ ràng.
-              </p>
+              <span className="text-2xl font-bold text-slate-800 tracking-tight">EmotionAI</span>
             </div>
-            <p className="text-xs text-[#93A4C3]">Powered by DeepFace</p>
-          </section>
+            <p className="text-slate-500 text-sm leading-relaxed max-w-[200px]">
+              Phân tích cảm xúc khuôn mặt bằng DeepFace & FER
+            </p>
+          </div>
 
-          <section className="px-6 py-10 sm:px-12 sm:py-14">
-            <div className="mx-auto max-w-md">
-              <div className="mb-8 lg:hidden">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#38BDF8] bg-[#1E3A8A] text-white">
-                    <ScanFace size={20} />
+          {/* Minh họa trung tâm */}
+          <div className="relative flex justify-center items-center my-8 z-10">
+            {/* Khung quét Face */}
+            <div className="relative w-40 h-40 rounded-[2rem] bg-gradient-to-b from-[#6B8CFF] to-[#8C68F5] flex items-center justify-center shadow-lg shadow-blue-200/50">
+              <Smile size={64} className="text-white opacity-90" strokeWidth={1.5} />
+              
+              {/* 4 góc khung quét */}
+              <div className="absolute top-2 left-2 w-6 h-6 border-t-2 border-l-2 border-white/50 rounded-tl-xl"></div>
+              <div className="absolute top-2 right-2 w-6 h-6 border-t-2 border-r-2 border-white/50 rounded-tr-xl"></div>
+              <div className="absolute bottom-2 left-2 w-6 h-6 border-b-2 border-l-2 border-white/50 rounded-bl-xl"></div>
+              <div className="absolute bottom-2 right-2 w-6 h-6 border-b-2 border-r-2 border-white/50 rounded-br-xl"></div>
+            </div>
+
+            {/* Badges cảm xúc nổi */}
+            <div className="absolute -right-4 top-4 flex flex-col gap-2.5">
+              <div className="bg-white/80 backdrop-blur text-slate-700 text-xs font-semibold py-1.5 px-3 rounded-full flex items-center gap-1.5 shadow-sm border border-white">
+                <Smile size={14} className="text-emerald-500" /> Happy
+              </div>
+              <div className="bg-white/80 backdrop-blur text-slate-700 text-xs font-semibold py-1.5 px-3 rounded-full flex items-center gap-1.5 shadow-sm border border-white">
+                <Meh size={14} className="text-purple-500" /> Neutral
+              </div>
+              <div className="bg-white/80 backdrop-blur text-slate-700 text-xs font-semibold py-1.5 px-3 rounded-full flex items-center gap-1.5 shadow-sm border border-white">
+                <Frown size={14} className="text-rose-500" /> Sad
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Banner */}
+          <div className="relative z-10">
+            <p className="text-white text-xl font-medium italic drop-shadow-md transform -rotate-2 leading-tight">
+              Hiểu cảm xúc<br/>Kết nối con người
+            </p>
+          </div>
+        </div>
+
+        {/* === CỘT PHẢI: Form === */}
+        <div className="w-full md:w-[55%] p-8 md:p-12 flex flex-col justify-center bg-white relative">
+          <div className="max-w-sm w-full mx-auto">
+            
+            {/* Headers */}
+            {isLogin ? (
+              <div className="mb-8">
+                <p className="text-sm font-medium text-amber-500 mb-1">Chào mừng trở lại! 👋</p>
+                <h2 className="text-3xl font-bold text-slate-800 tracking-tight mb-2">Đăng nhập</h2>
+                <p className="text-slate-500 text-sm">Nhập thông tin tài khoản của bạn để tiếp tục sử dụng hệ thống.</p>
+              </div>
+            ) : (
+              <div className="mb-8">
+                <p className="text-sm font-medium text-purple-600 mb-1">Bắt đầu hành trình của bạn 🚀</p>
+                <h2 className="text-3xl font-bold text-slate-800 tracking-tight mb-2">Đăng ký tài khoản</h2>
+                <p className="text-slate-500 text-sm">Tạo tài khoản để bắt đầu phân tích cảm xúc ngay hôm nay!</p>
+              </div>
+            )}
+
+            <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+              {/* Họ và tên (Chỉ hiện đăng ký) */}
+              {!isLogin && (
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                    <User size={18} strokeWidth={2} />
                   </div>
-                  <p className="text-lg font-extrabold text-[#0F254A]">EmotionAI</p>
+                  <input 
+                    type="text" 
+                    placeholder="Họ và tên" 
+                    className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm placeholder:text-slate-400"
+                  />
                 </div>
+              )}
+
+              {/* Email */}
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                  <Mail size={18} strokeWidth={2} />
+                </div>
+                <input 
+                  type="text" 
+                  placeholder={isLogin ? "Email hoặc số điện thoại" : "Email"} 
+                  className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm placeholder:text-slate-400"
+                />
               </div>
 
-              <p className="mb-2 text-sm font-semibold text-[#2563EB]">Chào mừng trở lại</p>
-              <h2 className="m-0 text-3xl font-extrabold leading-tight text-[#0F254A]">Đăng nhập tài khoản</h2>
-              <p className="mt-3 text-sm leading-6 text-[#64748B]">
-                Tiếp tục phiên phân tích cảm xúc của bạn.
-              </p>
-              {registrationMessage && (
-                <p className="mt-4 text-sm font-medium text-[#16A34A]">
-                  {registrationMessage}
-                </p>
-              )}
-              {error && (
-                <p className="mt-4 text-sm font-medium text-[#DC2626]" role="alert">
-                  {error}
-                </p>
-              )}
+              {/* Mật khẩu */}
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                  <Lock size={18} strokeWidth={2} />
+                </div>
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  placeholder="Mật khẩu" 
+                  className="w-full pl-11 pr-11 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm placeholder:text-slate-400"
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
+                </button>
+              </div>
 
-              <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-                <label className="block text-sm font-semibold text-[#334155]">
-                  Email
-                  <span className="relative mt-2 block">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" size={18} />
-                    <input
-                      className="w-full rounded-lg border border-[#CBD5E1] bg-white py-3 pl-10 pr-4 text-sm text-[#0F254A] outline-none transition placeholder:text-[#94A3B8] focus:border-[#2563EB] focus:ring-4 focus:ring-[#DBEAFE]"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      required
-                    />
-                  </span>
-                </label>
-
-                <label className="block text-sm font-semibold text-[#334155]">
-                  Mật khẩu
-                  <span className="relative mt-2 block">
-                    <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" size={18} />
-                    <input
-                      className="w-full rounded-lg border border-[#CBD5E1] bg-white py-3 pl-10 pr-11 text-sm text-[#0F254A] outline-none transition placeholder:text-[#94A3B8] focus:border-[#2563EB] focus:ring-4 focus:ring-[#DBEAFE]"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Nhập mật khẩu"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      required
-                    />
-                    <button
-                      type="button"
-                      aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#2563EB]"
-                      onClick={() => setShowPassword((visible) => !visible)}
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </span>
-                </label>
-
-                <div className="flex items-center justify-between text-sm">
-                  <label className="flex items-center gap-2 text-[#64748B]">
-                    <input className="h-4 w-4 accent-[#2563EB]" type="checkbox" />
-                    Ghi nhớ tôi
-                  </label>
-                  <button type="button" className="font-semibold text-[#2563EB] hover:text-[#1D4ED8]">
-                    Quên mật khẩu?
+              {/* Xác nhận mật khẩu (Chỉ hiện đăng ký) */}
+              {!isLogin && (
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                    <Lock size={18} strokeWidth={2} />
+                  </div>
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="Xác nhận mật khẩu" 
+                    className="w-full pl-11 pr-11 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm placeholder:text-slate-400"
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
                   </button>
                 </div>
+              )}
 
-                <button
-                  className="w-full rounded-lg bg-[#2563EB] px-5 py-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(37,99,235,0.22)] transition hover:bg-[#1D4ED8] focus:outline-none focus:ring-4 focus:ring-[#DBEAFE]"
-                  type="submit"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
-                </button>
-              </form>
+              {/* Ghi nhớ & Quên MK (Chỉ hiện đăng nhập) */}
+              {isLogin && (
+                <div className="flex items-center justify-between text-sm mt-1 px-1">
+                  <label className="flex items-center text-slate-600 cursor-pointer group font-medium">
+                    <input type="checkbox" className="mr-2 w-4 h-4 rounded text-indigo-500 border-slate-300 focus:ring-indigo-500" defaultChecked />
+                    Ghi nhớ đăng nhập
+                  </label>
+                  <a href="#" className="text-indigo-600 hover:text-indigo-700 font-semibold transition-colors">Quên mật khẩu?</a>
+                </div>
+              )}
 
-              <p className="mt-8 text-center text-sm text-[#64748B]">
-                Chưa có tài khoản? <Link className="font-bold text-[#2563EB] hover:text-[#1D4ED8]" to="/register">Đăng ký ngay</Link>
-              </p>
-            </div>
-          </section>
+              {/* Main Button */}
+              <button className="w-full bg-gradient-to-r from-[#5A72F6] to-[#8861F4] hover:opacity-90 text-white font-medium py-3 rounded-xl transition-all mt-4 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200">
+                {isLogin ? (
+                  <>
+                    <ArrowRight size={18} /> Đăng nhập
+                  </>
+                ) : (
+                  <>
+                    <UserPlus size={18} /> Đăng ký
+                  </>
+                )}
+              </button>
+
+              {/* Divider */}
+              <div className="flex items-center my-6">
+                <div className="flex-1 border-t border-slate-100"></div>
+                <span className="px-4 text-xs text-slate-400 font-medium uppercase tracking-wider">Hoặc</span>
+                <div className="flex-1 border-t border-slate-100"></div>
+              </div>
+
+              {/* Toggle Button */}
+              <button 
+                type="button"
+                onClick={() => setIsLogin(!isLogin)}
+                className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 font-medium py-3 rounded-xl transition-all flex items-center justify-between px-6 text-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <User size={16} className="text-slate-400" />
+                  <span>
+                    {isLogin ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
+                    <span className="text-indigo-600 font-bold ml-1">
+                      {isLogin ? 'Đăng ký ngay' : 'Đăng nhập'}
+                    </span>
+                  </span>
+                </div>
+                <ChevronRight size={16} className="text-slate-400" />
+              </button>
+
+            </form>
+          </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 };
